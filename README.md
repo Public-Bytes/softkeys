@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Typing and predictions stay on the device, and the app has no network permission. The current release is **1.6**.
+SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.7**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.6.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.7.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -46,11 +46,21 @@ The release uses the same signing certificate as the previous signed SoftKeys do
 | Repeated deletion | Hold Backspace. |
 | Clipboard suggestion | Tap the Paste chip above the keys to insert recently copied text. Tap its close button to dismiss it. |
 | Emoji | Open the emoji picker for categories, search, and recent selections. Swipe to change pages. Hold an emoji with a dot below it for variants. |
-| Voice input | Tap the microphone to switch to an enabled voice keyboard. Android opens the keyboard picker if none is enabled. |
+| Dictation | Tap the microphone to speak while SoftKeys stays visible. Tap Stop or the microphone again to finish, or Cancel to discard the request. |
 
 Autocorrect, suggestions, and glide decoding use a bundled English dictionary. Recognized words, acronyms, and mixed case text are preserved. URL and path syntax stays literal, while ordinary search words can be corrected.
 
 Glide entry and suggestions remain available in email fields and recognized terminal editors. Automatic word replacement stays off in those fields. Password fields keep predictions disabled. Recognized terminal command fields marked as visible passwords have a specific exception unless their hints identify a password or secret.
+
+## Dictation
+
+The first microphone tap asks for audio permission. After granting access, return to your text field and tap the microphone again to start. You can also grant permission through Microphone access in SoftKeys settings.
+
+Listening status and a partial transcript appear above the keys. The final result is inserted once into the original field. Typing, moving the cursor, hiding the keyboard, or changing fields cancels dictation. Password and numeric fields do not support dictation.
+
+Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
+
+<img src="docs/images/dictation.png" alt="SoftKeys stays visible during dictation, with Listening, Stop, and Cancel above the keys" width="300">
 
 ## Settings
 
@@ -78,7 +88,7 @@ Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25
 
 SoftKeys does not save typed text or send it over the network. Keyboard settings and recent emoji selections are saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
 
-The app requests only Android's normal `VIBRATE` permission for haptic feedback. It has no network, microphone, contacts, or storage permissions. Voice recognition is handled by the voice keyboard selected through Android.
+The app requests Android's normal `VIBRATE` permission for haptic feedback and optional `RECORD_AUDIO` permission for dictation. It has no network, contacts, or storage permissions. Dictation sends microphone audio to the phone's speech recognition service, which may send it to its provider. SoftKeys does not save microphone audio or transcripts to files.
 
 ## Build
 
@@ -100,7 +110,7 @@ Glide decoding is an initial implementation and can misread gestures. Cursor con
 
 Emoji use the device's Android font, so artwork and available characters depend on Android. Apple emoji artwork is not included. Haptic feedback depends on physical device hardware and system restrictions.
 
-The 1.4 release build, signature, alignment, and download were checked. Emulator captures were reviewed for settings, popups, and cursor mode. Physical vibration and Chrome/Terminus behavior on the user's device have not been verified. No automated test suite was run for 1.4.
+The 1.7 release build, signature, alignment, and downloads were checked. Manual emulator review covered microphone permission, the dictation controls, cancellation, and the return to ordinary typing. The emulator has no audio input, so spoken transcription accuracy was not verified. Physical vibration and Chrome/Terminus behavior on the user's device remain unverified. No automated tests were added or run for 1.7.
 
 ## Data and licenses
 

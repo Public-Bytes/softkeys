@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.7
+
+Replaced the microphone's keyboard switch with dictation inside SoftKeys. The keyboard stays visible during speech recognition. Listening status and partial text appear above the keys, with Stop and Cancel controls. Tap the microphone again to finish a request.
+
+The first use asks for microphone permission and explains audio processing. Permission approval does not start recording automatically. Microphone access is also available in settings. Android's speech recognition provider handles audio and may use its network service. SoftKeys does not save audio or transcripts to files.
+
+Final text is inserted once into the original editor. Typing, moving the cursor, hiding the keyboard, or changing fields cancels the request. Recording has a 45-second limit, with up to eight seconds to finish a result. Password and numeric fields keep dictation disabled. Errors appear briefly above the keys, and ordinary suggestions return after dismissal or typing.
+
+The signed release build completed. Manual emulator review covered the permission flow, listening on narrow and wide layouts, Stop, Cancel, typing during recording, and field changes. SoftKeys remained the selected keyboard. The emulator has no audio input, so spoken transcription accuracy remains unverified. No automated tests were added or run.
+
 ## 1.6
 
 Added configurable keypress vibration from 1 to 100 ms. The setting supports a slider, exact numeric entry, and previews while Haptic feedback is enabled. Save applies the value, Cancel keeps the previous setting, and Default selects 12 ms. Existing installations retain the previous 12 ms default. Hold feedback scales with the selected duration.

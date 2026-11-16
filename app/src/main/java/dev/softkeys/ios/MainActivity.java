@@ -79,6 +79,8 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar bar){}
         });page.addView(holdDuration,new LinearLayout.LayoutParams(-1,dp(48)));
         page.addView(text("Choose 150 to 1000 ms. Applies to accents, emoji variants, cursor control, Caps Lock, and repeated deletion.",13,muted));gap(12);
+        button("Microphone access",()->startActivity(new Intent(this,MicrophonePermissionActivity.class)),false);
+        page.addView(text("Dictation keeps SoftKeys visible. Your phone's speech recognition service processes audio and may send it to its provider.",13,muted));gap(8);
         toggle("Autocorrect", "autocorrect", true);
         toggle("Glide typing", "glide", true);
         toggle("Clipboard suggestions", "clipboardSuggestions", true);
@@ -94,7 +96,7 @@ public class MainActivity extends Activity {
             }catch(java.io.IOException ignored){}
         },false);gap(12);
         sample=new EditText(this);sample.setTextColor(ink);sample.setHintTextColor(muted);sample.setHint("Tap here to try your keyboard");sample.setTextSize(17);sample.setGravity(Gravity.TOP);sample.setPadding(dp(16),dp(15),dp(16),dp(15));sample.setBackground(bg(Color.WHITE,14));sample.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);sample.setMinLines(3);sample.setContentDescription("Try your keyboard");page.addView(sample,new LinearLayout.LayoutParams(-1,dp(112)));gap(16);
-        page.addView(text("English (US), autocorrect, glide typing and emoji\nTyping stays on your phone. No network permission.",12,muted));
+        page.addView(text("English (US), autocorrect, glide typing, dictation and emoji\nText predictions stay on your phone. Dictation uses your phone's speech recognition service.",12,muted));
         setContentView(scroll);
     }
     void toggle(String label,String key,boolean fallback){Switch option=new Switch(this);option.setText(label);option.setTextColor(ink);option.setChecked(prefs.getBoolean(key,fallback));option.setOnCheckedChangeListener((button,checked)->prefs.edit().putBoolean(key,checked).apply());page.addView(option,new LinearLayout.LayoutParams(-1,dp(52)));}
