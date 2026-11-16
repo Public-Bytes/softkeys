@@ -382,14 +382,18 @@ public class IosKeyboardService extends InputMethodService {
                 if(!current(session)){if(dictation==session)cancelDictation();return;}
                 cancelDictation();
                 if(text.isEmpty())return;
-                boolean space=!terminalEditor&&!emailField&&!uriField;
-                char previous=before.length()==0?' ':before.charAt(before.length()-1);
-                String lead=space&&selectionLength==0&&!Character.isWhitespace(previous)&&(Character.isLetterOrDigit(previous)||".!?".indexOf(previous)>=0)?" ":"";
-                commit(lead+text+(space?" ":""));
+                commitDictation(text);
             }
-            public void error(DictationSession session,String message){if(dictation!=session)return;showDictationError(message);}
+            public void error(DictationSession session,String message,String retainedText){if(!current(session)){if(dictation==session)cancelDictation();return;}cancelDictation();commitDictation(retainedText);showDictationError(message);}
         });
         dictation=session;voiceChanged();session.start();
+    }
+    private void commitDictation(String text){
+        if(text.isEmpty())return;
+        boolean space=!terminalEditor&&!emailField&&!uriField;
+        char previous=before.length()==0?' ':before.charAt(before.length()-1);
+        String lead=space&&selectionLength==0&&!Character.isWhitespace(previous)&&(Character.isLetterOrDigit(previous)||".!?".indexOf(previous)>=0)?" ":"";
+        commit(lead+text+(space?" ":""));
     }
     private void stopDictation(){if(dictation!=null)dictation.stop();}
     private void cancelDictation(){
