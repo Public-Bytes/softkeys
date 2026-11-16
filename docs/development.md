@@ -20,6 +20,8 @@ Debug builds use a development certificate and cannot update an installed signed
 | Location | Purpose |
 | --- | --- |
 | `app/src/main/java/dev/softkeys/ios/IosKeyboardService.java` | Input connection handling, keyboard layout, drawing, touch input, cursor movement, and feedback. |
+| `app/src/main/java/dev/softkeys/ios/DictationSession.java` | Bounded speech recognition request, partial transcript callbacks, timeouts, and cleanup. |
+| `app/src/main/java/dev/softkeys/ios/MicrophonePermissionActivity.java` | Microphone explanation, runtime permission, and settings recovery after denial. |
 | `app/src/main/java/dev/softkeys/ios/MainActivity.java` | Keyboard setup, appearance, typing settings, and sample field. |
 | `app/src/main/java/dev/softkeys/ios/KeyboardPreferences.java` | Shared preferences, appearance migration, and hold duration bounds. |
 | `app/src/main/java/dev/softkeys/ios/EnglishDictionary.java` | Local suggestions, spelling correction, and glide decoding. |
@@ -34,6 +36,14 @@ The keyboard retains its view and cached context when an editor restarts the sam
 Ordinary Backspace uses Android delete-key events for compatibility with custom editors. Compound emoji use whole-grapheme deletion when the editor supports it. Cursor control uses arrow-key events so the editor handles character boundaries and line layout.
 
 Autocorrect, glide typing, and field privacy are handled separately. Changes to input-type handling should preserve password restrictions and avoid silently rewriting commands or address syntax.
+
+## Dictation
+
+`DictationSession` uses Android `SpeechRecognizer` on the main thread and does not start a recognition activity or switch input methods. The manifest declares `RECORD_AUDIO` and queries `android.speech.RecognitionService` for package visibility. The permission activity is not exported, and permission approval does not start recording automatically.
+
+Each request captures the current input connection and editor revision. Partial results appear only in the existing suggestion strip. A final result is committed once if the same editor remains active. New input, cursor movement, keyboard dismissal, or service destruction cancels and destroys the recognizer. Recording is bounded to 45 seconds with an additional eight-second deadline for a final result. Cancellation discards all partial text, and late callbacks are ignored.
+
+Dictation temporarily replaces the clipboard and word suggestions above the keys. Status, Stop, and Cancel use matching visual, touch, and accessibility bounds without rebuilding the keyboard. Recognition errors appear in the strip for eight seconds and can be dismissed. The phone's recognition provider controls language availability and whether audio is processed locally or remotely.
 
 ## Preferences
 

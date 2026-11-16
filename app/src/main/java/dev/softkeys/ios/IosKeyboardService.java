@@ -15,6 +15,10 @@ import java.util.concurrent.*;
 
 public class IosKeyboardService extends InputMethodService {
     private KeyboardView keyboard;
+    private DictationSession dictation;
+    private String dictationStatus="";
+    private boolean dictationFinishing;
+    private final Runnable clearDictationNotice=this::cancelDictation;
     private boolean shift, caps, symbols, second, emoji, numeric, privateField, manualShift;
     private boolean allowPredictions, allowGlide, emailField, uriField, rawEditor, terminalEditor, activeInput, emojiSearching;
     private int emojiPage, emojiCategory=1, inputType, fieldId;
@@ -76,6 +80,7 @@ public class IosKeyboardService extends InputMethodService {
         // Keep the keyboard mode, touch state and cached context for that session.
         boolean same=activeInput&&Objects.equals(editorPackage,info.packageName)&&fieldId==info.fieldId&&inputType==info.inputType;
         if(restarting&&same){scheduleContextRead();return;}
+        cancelDictation();
         activeInput=true;editorPackage=info.packageName;fieldId=info.fieldId;inputType=info.inputType;
         revision++;decodingGlide=false;pendingActions.clear();acknowledgements.clear();before.setLength(0);clearCorrection();glideLength=0;
         caret=Math.max(0,Math.min(info.initialSelStart,info.initialSelEnd));selectionLength=Math.abs(info.initialSelEnd-info.initialSelStart);
@@ -98,14 +103,15 @@ public class IosKeyboardService extends InputMethodService {
         updateShift();refreshSuggestions();scheduleContextRead();rebuild();readClipboardSuggestion();
     }
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null){if(keyboard.keys.isEmpty())rebuild();else keyboard.requestLayout();}if(!restarting)readClipboardSuggestion();}
-    @Override public void onFinishInput(){activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
-    @Override public void onFinishInputView(boolean finishing){decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
-    @Override public void onDestroy(){if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override public void onFinishInput(){cancelDictation();activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
+    @Override public void onFinishInputView(boolean finishing){cancelDictation();decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
+    @Override public void onDestroy(){cancelDictation();if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
     @Override public void onUpdateSelection(int os,int oe,int ns,int ne,int cs,int ce){
         super.onUpdateSelection(os,oe,ns,ne,cs,ce);
         if(ns<0||ne<0)return;
         if(ns==ne&&acknowledgements.contains(ns)){while(!acknowledgements.isEmpty()&&acknowledgements.removeFirst()!=ns){}return;}
         if(ns==caret&&ne==caret+selectionLength)return;
+        cancelDictation();
         decodingGlide=false;pendingActions.clear();caret=Math.min(ns,ne);selectionLength=Math.abs(ne-ns);acknowledgements.clear();manualShift=false;clearCorrection();glideLength=0;revision++;
         if(keyboard==null||!keyboard.cursorDragging())scheduleContextRead();
     }
@@ -137,7 +143,7 @@ public class IosKeyboardService extends InputMethodService {
     }
     private boolean clipboardVisible(){
         long age=System.currentTimeMillis()-clipboardTimestamp;
-        return activeInput&&clipboardText!=null&&age>=0&&age<CLIPBOARD_LIFETIME&&prefs.getBoolean("clipboardSuggestions",true)&&allowPredictions&&!privateField&&!numeric&&!emoji&&!emojiSearching&&selectionLength==0&&glideLength==0&&!decodingGlide&&(keyboard==null||!keyboard.cursorDragging())&&prefix().isEmpty();
+        return dictation==null&&dictationStatus.isEmpty()&&activeInput&&clipboardText!=null&&age>=0&&age<CLIPBOARD_LIFETIME&&prefs.getBoolean("clipboardSuggestions",true)&&allowPredictions&&!privateField&&!numeric&&!emoji&&!emojiSearching&&selectionLength==0&&glideLength==0&&!decodingGlide&&(keyboard==null||!keyboard.cursorDragging())&&prefix().isEmpty();
     }
     private boolean isTerminalEditor(EditorInfo info){
         String name=String.valueOf(info.packageName).toLowerCase(Locale.US);
@@ -247,6 +253,8 @@ public class IosKeyboardService extends InputMethodService {
         worker.execute(()->{if(token!=revision)return;List<String> result=dict.suggest(p);String correction=dict.correct(p);handler.post(()->{if(token!=revision||!activeInput||glideLength>0)return;correctionPrefix=p;cachedCorrection=correction;suggestions=result.toArray(new String[0]);keyboard.invalidateHeader();});});
     }
     private void chooseSuggestion(int i){
+        if(dictation!=null){if(i==1)stopDictation();else if(i==2)cancelDictation();return;}
+        if(!dictationStatus.isEmpty()){if(i==2)cancelDictation();return;}
         if(clipboardVisible()){
             if(i==2){dismissClipboardSuggestion();return;}
             if(i==0){String text=clipboardText;dismissClipboardSuggestion();commit(text);}return;
@@ -288,6 +296,7 @@ public class IosKeyboardService extends InputMethodService {
         else commit(delimiter);
     }
     private void finishGlide(float[] path,Map<Character,float[]> centers,float keyWidth,boolean upper){
+        cancelDictation();
         dismissClipboardSuggestion();
         if(decodingGlide){pendingActions.add(()->finishGlide(path,centers,keyWidth,upper));return;}
         EnglishDictionary dict=dictionary;if(dict==null)return;long token=revision;decodingGlide=true;handler.removeCallbacks(readContext);
@@ -306,6 +315,7 @@ public class IosKeyboardService extends InputMethodService {
     private void searchEmoji(){emojiSearching=true;emoji=false;symbols=false;updateShift();rebuild();}
     private void showEmojiResults(){emojiSearching=false;emoji=true;emojiPage=0;rebuild();}
     private void press(String value){
+        if(!value.equals("voice")&&!value.startsWith("suggest:"))cancelDictation();
         if(decodingGlide){pendingActions.add(()->press(value));return;}
         if(value.startsWith("text:")){String text=value.substring(5);lastShift=lastSpace=0;if(emojiSearching){emojiQuery+=text.toLowerCase(Locale.US);keyboard.invalidateHeader();}else commit(text);return;}
         if(value.startsWith("suggest:")){chooseSuggestion(Integer.parseInt(value.substring(8)));return;}
@@ -349,15 +359,49 @@ public class IosKeyboardService extends InputMethodService {
         }
     }
     private void startVoiceInput(){
-        InputMethodManager manager=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
-        for(InputMethodInfo method:manager.getEnabledInputMethodList()){
-            for(int i=0;i<method.getSubtypeCount();i++){
-                if("voice".equals(method.getSubtypeAt(i).getMode())){switchInputMethod(method.getId());return;}
-            }
+        if(dictation!=null){stopDictation();return;}
+        cancelDictation();
+        if(!activeInput||getCurrentInputConnection()==null||!isInputViewShown())return;
+        if(privateField||numeric||!allowPredictions){Toast.makeText(this,"Dictation is unavailable in this field",Toast.LENGTH_SHORT).show();return;}
+        if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            try{startActivity(new Intent(this,MicrophonePermissionActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+            catch(RuntimeException unavailable){Toast.makeText(this,"Allow microphone access in SoftKeys settings",Toast.LENGTH_LONG).show();}
+            return;
         }
-        Toast.makeText(this,"Choose a voice input keyboard",Toast.LENGTH_SHORT).show();
-        manager.showInputMethodPicker();
+        if(!android.speech.SpeechRecognizer.isRecognitionAvailable(this)){showDictationError("No speech recognition service is installed");return;}
+        dismissClipboardSuggestion();clearCorrection();glideLength=0;lastSpace=lastShift=0;
+        final long token=revision;final InputConnection connection=getCurrentInputConnection();
+        dictationFinishing=false;dictationStatus="Starting microphone…";
+        DictationSession session=new DictationSession(this,new DictationSession.Listener(){
+            private boolean current(DictationSession session){return dictation==session&&activeInput&&isInputViewShown()&&revision==token&&connection==getCurrentInputConnection();}
+            public void status(DictationSession session,String text,boolean finishing){
+                if(!current(session)){if(dictation==session)cancelDictation();return;}
+                dictationStatus=text;dictationFinishing=finishing;voiceChanged();
+            }
+            public void result(DictationSession session,String text){
+                if(!current(session)){if(dictation==session)cancelDictation();return;}
+                cancelDictation();
+                if(text.isEmpty())return;
+                boolean space=!terminalEditor&&!emailField&&!uriField;
+                char previous=before.length()==0?' ':before.charAt(before.length()-1);
+                String lead=space&&selectionLength==0&&!Character.isWhitespace(previous)&&(Character.isLetterOrDigit(previous)||".!?".indexOf(previous)>=0)?" ":"";
+                commit(lead+text+(space?" ":""));
+            }
+            public void error(DictationSession session,String message){if(dictation!=session)return;showDictationError(message);}
+        });
+        dictation=session;voiceChanged();session.start();
     }
+    private void stopDictation(){if(dictation!=null)dictation.stop();}
+    private void cancelDictation(){
+        boolean changed=dictation!=null||!dictationStatus.isEmpty();
+        DictationSession previous=dictation;dictation=null;dictationStatus="";dictationFinishing=false;handler.removeCallbacks(clearDictationNotice);
+        if(previous!=null)previous.close();if(changed)voiceChanged();
+    }
+    private void showDictationError(String message){
+        cancelDictation();dictationStatus=message;voiceChanged();handler.postDelayed(clearDictationNotice,8_000);
+        if(keyboard!=null)keyboard.announceForAccessibility(message);
+    }
+    private void voiceChanged(){if(keyboard!=null){keyboard.clipboardChanged();for(Key key:keyboard.keys)if(key.value.equals("voice"))keyboard.invalidateKey(key);}}
     private String accents(String s){return switch(s){case "a"->"à á â ä æ ã å ā";case "e"->"è é ê ë ē";case "i"->"ì í î ï ī";case "o"->"ò ó ô ö õ ø œ ō";case "u"->"ù ú û ü ū";case "n"->"ñ ń";case "c"->"ç ć č";case "s"->"ß ś š";case "y"->"ý ÿ";default->"";};}
     private void showVariants(Key key,List<String> values,boolean replace){
         LinearLayout row=new LinearLayout(this);row.setPadding(dp(4),dp(4),dp(4),dp(4));android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(special);bg.setCornerRadius(dp(10));row.setBackground(bg);
@@ -455,10 +499,14 @@ public class IosKeyboardService extends InputMethodService {
             if(focused>=0&&focused<keys.size()&&!keyVisible(keys.get(focused)))focused=-1;
             invalidateHeader();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
-        private boolean keyVisible(Key key){return !clipboardVisible()||!key.value.equals("suggest:1");}
+        private boolean keyVisible(Key key){return !(clipboardVisible()||dictation==null&&!dictationStatus.isEmpty())||!key.value.equals("suggest:1");}
         private void keyBounds(Key key,RectF bounds){
             bounds.set(key.box);
-            if(clipboardVisible()){
+            if(dictation!=null){
+                if(key.value.equals("suggest:0"))bounds.right=width*.62f;
+                else if(key.value.equals("suggest:1")){bounds.left=width*.62f;bounds.right=width*.81f;}
+                else if(key.value.equals("suggest:2"))bounds.left=width*.81f;
+            }else if(clipboardVisible()||!dictationStatus.isEmpty()){
                 if(key.value.equals("suggest:0"))bounds.right=width-dp(48);
                 else if(key.value.equals("suggest:2"))bounds.left=width-dp(48);
             }
@@ -468,10 +516,10 @@ public class IosKeyboardService extends InputMethodService {
         private boolean letter(Key k){return k!=null&&k.value.length()==1&&k.value.charAt(0)>='a'&&k.value.charAt(0)<='z'&&!symbols&&!emoji&&!numeric;}
         private String label(Key k){
             if(cursorDragging())return "";
-            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i<suggestions.length?suggestions[i]:"";}
+            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(dictation!=null)return i==0?dictationStatus:i==1?dictationFinishing?"Finishing":"Stop":"Cancel";if(!dictationStatus.isEmpty())return i==0?dictationStatus:i==2?"Dismiss dictation message":"";if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i<suggestions.length?suggestions[i]:"";}
             if(k.value.startsWith("em:"))return k.value.substring(3);
             if(k.value.startsWith("cat:"))return EmojiCatalog.ICONS[Integer.parseInt(k.value.substring(4))];
-            return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->"Voice input";case "return"->actionLabel();case "more"->second?"123":"#+=";case "emojinext"->"›";case "emojiprev"->"‹";case "emojisearch"->(emojiQuery.isEmpty()?EmojiCatalog.NAMES[emojiCategory]:"\""+emojiQuery+"\"")+"   "+(emojiPage+1)+"/"+emojiPages+"   ⌕";case "emojiquery"->emojiQuery.isEmpty()?"Search emoji":emojiQuery;case "emojidone"->"Search";default->!symbols&&!emoji&&shift?k.value.toUpperCase(Locale.US):k.value;};
+            return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->dictation!=null?"Stop dictation":"Start dictation";case "return"->actionLabel();case "more"->second?"123":"#+=";case "emojinext"->"›";case "emojiprev"->"‹";case "emojisearch"->(emojiQuery.isEmpty()?EmojiCatalog.NAMES[emojiCategory]:"\""+emojiQuery+"\"")+"   "+(emojiPage+1)+"/"+emojiPages+"   ⌕";case "emojiquery"->emojiQuery.isEmpty()?"Search emoji":emojiQuery;case "emojidone"->"Search";default->!symbols&&!emoji&&shift?k.value.toUpperCase(Locale.US):k.value;};
         }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);canvas.save();canvas.clipPath(surface);paint.setColor(background);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);canvas.drawPath(surface,paint);paint.setTypeface(normal);
@@ -488,6 +536,11 @@ public class IosKeyboardService extends InputMethodService {
             String label=label(k);boolean suggestion=k.value.startsWith("suggest:"),category=k.value.startsWith("cat:"),em=k.value.startsWith("em:");
             boolean pressed=false;for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.highlight==k&&!t.gliding)pressed=true;}
             paint.setStyle(Paint.Style.FILL);paint.setColor(foreground);paint.setAlpha(255);
+            if(suggestion&&!dictationStatus.isEmpty()){
+                keyBounds(k,rect);paint.setTextSize(dp(wide?13:14));
+                String status=android.text.TextUtils.ellipsize(dictation==null&&k.value.equals("suggest:2")?"×":label,new android.text.TextPaint(paint),Math.max(1,rect.width()-dp(16)),android.text.TextUtils.TruncateAt.END).toString();
+                paint.setTextAlign(Paint.Align.CENTER);canvas.drawText(status,rect.centerX(),rect.centerY()-(paint.ascent()+paint.descent())/2,paint);return;
+            }
             if(suggestion&&clipboardVisible()){
                 keyBounds(k,rect);
                 if(k.value.equals("suggest:0")){
@@ -528,7 +581,7 @@ public class IosKeyboardService extends InputMethodService {
                 case "shift":iconPath.moveTo(12,3);iconPath.lineTo(3,12);iconPath.lineTo(8,12);iconPath.lineTo(8,21);iconPath.lineTo(16,21);iconPath.lineTo(16,12);iconPath.lineTo(21,12);iconPath.close();if(shift)paint.setStyle(Paint.Style.FILL);c.drawPath(iconPath,paint);paint.setStyle(Paint.Style.STROKE);if(caps)c.drawLine(8,23,16,23,paint);break;
                 case "delete":iconPath.moveTo(9,5);iconPath.lineTo(22,5);iconPath.lineTo(22,19);iconPath.lineTo(9,19);iconPath.lineTo(2,12);iconPath.close();c.drawPath(iconPath,paint);c.drawLine(12,9,18,15,paint);c.drawLine(18,9,12,15,paint);break;
                 case "emoji":c.drawCircle(12,12,9.5f,paint);c.drawArc(6,7,18,18,22,136,false,paint);paint.setStyle(Paint.Style.FILL);c.drawCircle(8.5f,9,1.1f,paint);c.drawCircle(15.5f,9,1.1f,paint);break;
-                case "voice":c.drawRoundRect(9,2,15,15,3,3,paint);c.drawArc(6,7,18,19,0,180,false,paint);c.drawLine(12,19,12,23,paint);c.drawLine(8,23,16,23,paint);break;
+                case "voice":if(dictation!=null){paint.setStyle(Paint.Style.FILL);c.drawRoundRect(5,5,19,19,3,3,paint);break;}c.drawRoundRect(9,2,15,15,3,3,paint);c.drawArc(6,7,18,19,0,180,false,paint);c.drawLine(12,19,12,23,paint);c.drawLine(8,23,16,23,paint);break;
                 case "return":iconPath.moveTo(20,5);iconPath.lineTo(20,11);iconPath.quadTo(20,15,16,15);iconPath.lineTo(4,15);iconPath.moveTo(9,10);iconPath.lineTo(4,15);iconPath.lineTo(9,20);c.drawPath(iconPath,paint);break;
             }
             paint.setStyle(Paint.Style.FILL);c.restore();
@@ -562,6 +615,7 @@ public class IosKeyboardService extends InputMethodService {
         private void startCursorDrag(Touch t,int id){
             if(touches.get(id)!=t)return;
             if(decodingGlide){pendingActions.add(()->startCursorDrag(t,id));return;}
+            cancelDictation();
             t.held=t.cursor=true;cursorPointer=id;dismissClipboardSuggestion();revision++;acknowledgements.clear();clearCorrection();glideLength=0;lastSpace=0;hidePreview();
             handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);
             haptic(true);invalidate();
@@ -589,6 +643,7 @@ public class IosKeyboardService extends InputMethodService {
                 boolean multiple=touches.size()>0;
                 for(int i=0;i<touches.size();i++){Touch previous=touches.valueAt(i);previous.multi=true;if(previous.hold!=null)handler.removeCallbacks(previous.hold);if(!previous.gliding&&letter(previous.key))commitTouch(previous);}
                 Key key=hit(e.getX(index),e.getY(index));if(key==null)return true;
+                if(!key.value.equals("voice")&&!key.value.startsWith("suggest:"))cancelDictation();
                 Touch t=new Touch(key,e.getX(index),e.getY(index));t.multi=multiple;touches.put(id,t);
                 haptic(false);if(multiple)hidePreview();else showPreview(t,id);
                 // Letters wait for release so a touch can become a glide without inserting its first letter.
