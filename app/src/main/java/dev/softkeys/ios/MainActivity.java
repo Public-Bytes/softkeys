@@ -80,7 +80,7 @@ public class MainActivity extends Activity {
         });page.addView(holdDuration,new LinearLayout.LayoutParams(-1,dp(48)));
         page.addView(text("Choose 150 to 1000 ms. Applies to accents, emoji variants, cursor control, Caps Lock, and repeated deletion.",13,muted));gap(12);
         button("Microphone access",()->startActivity(new Intent(this,MicrophonePermissionActivity.class)),false);
-        page.addView(text("Dictation keeps SoftKeys visible. Your phone's speech recognition service processes audio and may send it to its provider.",13,muted));gap(8);
+        page.addView(text("Dictation stays active through pauses. Tap Stop or the microphone again to finish. Your phone's speech recognition service processes audio and may send it to its provider.",13,muted));gap(8);
         toggle("Autocorrect", "autocorrect", true);
         toggle("Glide typing", "glide", true);
         toggle("Clipboard suggestions", "clipboardSuggestions", true);

@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.7**.
+SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.8**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.7.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.8.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -56,9 +56,9 @@ Glide entry and suggestions remain available in email fields and recognized term
 
 The first microphone tap asks for audio permission. After granting access, return to your text field and tap the microphone again to start. You can also grant permission through Microphone access in SoftKeys settings.
 
-Listening status and a partial transcript appear above the keys. The final result is inserted once into the original field. Typing, moving the cursor, hiding the keyboard, or changing fields cancels dictation. Password and numeric fields do not support dictation.
+Dictation stays active through pauses until you tap Stop or the microphone again. There is no session timer. Listening status and partial text appear above the keys, and Stop inserts the accumulated transcript into the original field. Cancel discards the session. Typing, moving the cursor, hiding the keyboard, or changing fields cancels dictation. Password and numeric fields do not support dictation.
 
-Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
+On Android 13 and later, SoftKeys supplies a continuous audio stream to providers that support segmented recognition. Older Android versions and providers that end each request use automatically repeated recognition requests, which can have brief gaps between requests. Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
 
 <img src="docs/images/dictation.png" alt="SoftKeys stays visible during dictation, with Listening, Stop, and Cancel above the keys" width="300">
 
@@ -110,7 +110,7 @@ Glide decoding is an initial implementation and can misread gestures. Cursor con
 
 Emoji use the device's Android font, so artwork and available characters depend on Android. Apple emoji artwork is not included. Haptic feedback depends on physical device hardware and system restrictions.
 
-The 1.7 release build, signature, alignment, and downloads were checked. Manual emulator review covered microphone permission, the dictation controls, cancellation, and the return to ordinary typing. The emulator has no audio input, so spoken transcription accuracy was not verified. Physical vibration and Chrome/Terminus behavior on the user's device remain unverified. No automated tests were added or run for 1.7.
+The 1.8 release build, signature, alignment, and downloads were checked. Manual emulator review covered an ongoing microphone session through more than a minute of silence, explicit Stop, Cancel, and field changes. The emulator has no audio input, so spoken transcription accuracy was not verified. Physical vibration and Chrome/Terminus behavior on the user's device remain unverified. No automated tests were added or run for 1.8.
 
 ## Data and licenses
 

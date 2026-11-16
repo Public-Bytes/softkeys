@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.8
+
+Removed the 45-second dictation cutoff. Pausing no longer finishes the dictation session. Tap Stop or the microphone again when finished, or Cancel to discard the session.
+
+On Android 13 and later, supported providers receive a continuous PCM audio stream and return successive speech segments. SoftKeys keeps the stream open through silence. Stop stops microphone capture and closes the stream so the provider can finish. Audio stays in memory and is not saved to a file.
+
+Older Android versions and providers without segmented audio support use repeated recognition requests within the same dictation session. Silence timeouts and ordinary final results start another request automatically. The fallback can have brief microphone gaps while the provider restarts. The installed provider must support segmented audio for uninterrupted capture across utterances.
+
+The transcript is accumulated until Stop. Cancel discards it. Completed speech segments are preserved if a microphone or provider error interrupts dictation. Typing, cursor movement, changing fields, or hiding SoftKeys still cancels dictation.
+
+The release build completed. Manual emulator review confirmed one uninterrupted microphone session through 76 seconds of silence, followed by microphone release after explicit Stop. Cancel and field changes were also reviewed. The emulator has no audio input, so spoken transcription accuracy and the fallback on older providers remain unverified. No automated tests were added or run.
+
 ## 1.7
 
 Replaced the microphone's keyboard switch with dictation inside SoftKeys. The keyboard stays visible during speech recognition. Listening status and partial text appear above the keys, with Stop and Cancel controls. Tap the microphone again to finish a request.

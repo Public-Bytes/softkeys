@@ -20,7 +20,8 @@ Debug builds use a development certificate and cannot update an installed signed
 | Location | Purpose |
 | --- | --- |
 | `app/src/main/java/dev/softkeys/ios/IosKeyboardService.java` | Input connection handling, keyboard layout, drawing, touch input, cursor movement, and feedback. |
-| `app/src/main/java/dev/softkeys/ios/DictationSession.java` | Bounded speech recognition request, partial transcript callbacks, timeouts, and cleanup. |
+| `app/src/main/java/dev/softkeys/ios/DictationSession.java` | User-controlled dictation session, segmented recognition, legacy requests, and cleanup. |
+| `app/src/main/java/dev/softkeys/ios/DictationAudio.java` | Continuous PCM microphone capture and a pipe to the speech provider. No audio files. |
 | `app/src/main/java/dev/softkeys/ios/MicrophonePermissionActivity.java` | Microphone explanation, runtime permission, and settings recovery after denial. |
 | `app/src/main/java/dev/softkeys/ios/MainActivity.java` | Keyboard setup, appearance, typing settings, and sample field. |
 | `app/src/main/java/dev/softkeys/ios/KeyboardPreferences.java` | Shared preferences, appearance migration, and hold duration bounds. |
@@ -41,7 +42,11 @@ Autocorrect, glide typing, and field privacy are handled separately. Changes to 
 
 `DictationSession` uses Android `SpeechRecognizer` on the main thread and does not start a recognition activity or switch input methods. The manifest declares `RECORD_AUDIO` and queries `android.speech.RecognitionService` for package visibility. The permission activity is not exported, and permission approval does not start recording automatically.
 
-Each request captures the current input connection and editor revision. Partial results appear only in the existing suggestion strip. A final result is committed once if the same editor remains active. New input, cursor movement, keyboard dismissal, or service destruction cancels and destroys the recognizer. Recording is bounded to 45 seconds with an additional eight-second deadline for a final result. Cancellation discards all partial text, and late callbacks are ignored.
+The service captures the current input connection and editor revision. Partial results appear only in the existing suggestion strip. Stop commits the accumulated transcript once if the same editor remains active. New input, cursor movement, keyboard dismissal, or service destruction cancels and destroys the recognizer. Cancellation discards the transcript, and late callbacks from old requests are ignored. Completed segments are retained if a microphone or provider error interrupts the session.
+
+There is no session timer. On API 33 and later, `DictationAudio` records 16 kHz mono PCM through `AudioRecord` and pipes it into `EXTRA_AUDIO_SOURCE`. The request sets `EXTRA_SEGMENTED_SESSION` to `EXTRA_AUDIO_SOURCE`, following the [Android audio source contract](https://developer.android.com/reference/android/speech/RecognizerIntent#EXTRA_AUDIO_SOURCE). Supported providers return successive segments while the audio stays open. Stop stops microphone capture and closes the stream, which tells the provider to finish. Audio is never saved to a file.
+
+Older Android versions and providers that reject or end the segmented request use repeated standard recognition requests. Final results, no-match errors, and silence timeouts start another request within the same user session. The fallback can have brief microphone gaps while the provider restarts. Silence does not finish the user session. An eight-second recovery deadline handles a legacy provider that reports an utterance boundary and then fails to return a result. A separate eight-second deadline after the user taps Stop preserves available partial text if finalization stalls. Neither deadline limits active dictation time.
 
 Dictation temporarily replaces the clipboard and word suggestions above the keys. Status, Stop, and Cancel use matching visual, touch, and accessibility bounds without rebuilding the keyboard. Recognition errors appear in the strip for eight seconds and can be dismissed. The phone's recognition provider controls language availability and whether audio is processed locally or remotely.
 
