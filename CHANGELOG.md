@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.6
+
+Added configurable keypress vibration from 1 to 100 ms. The setting supports a slider, exact numeric entry, and previews while Haptic feedback is enabled. Save applies the value, Cancel keeps the previous setting, and Default selects 12 ms. Existing installations retain the previous 12 ms default. Hold feedback scales with the selected duration.
+
+Added a Paste chip in the suggestion strip for recently copied text. The chip expires two minutes after the copy, and it is dismissed after pasting, closing the chip, or starting to type. Dismissal lasts for that copied item across editor changes. A separate switch turns clipboard suggestions off.
+
+The clipboard itself is not changed, and no clipboard history is saved. Suggestions stay out of password fields and skip clips marked sensitive. Only the suggestion strip is repainted when clipboard suggestions change, so the keyboard rows retain their positions and touch state.
+
+The release build completed. Android captures were reviewed for the exact 2 ms setting, the clipboard chip, and ordinary suggestions returning after a paste. No automated tests were added or run. Physical vibration strength remains dependent on the device.
+
 ## 1.5
 
 Added a dedicated 1 through 0 number row on wide displays, including unfolded phones. The row is enabled by default and can be turned off with the Tablet number row switch. Digits stay visible on both symbol pages so switching between letters and symbols keeps the same keyboard height. Narrow phone layouts retain their existing row count.

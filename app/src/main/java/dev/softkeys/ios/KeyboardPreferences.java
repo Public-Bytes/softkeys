@@ -4,7 +4,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 final class KeyboardPreferences {
+    static final int DEFAULT_VIBRATION_DURATION=12;
     private KeyboardPreferences() {}
+    static int vibrationDuration(SharedPreferences prefs) {
+        return Math.max(1,Math.min(100,prefs.getInt("vibrationDuration",DEFAULT_VIBRATION_DURATION)));
+    }
+    static int vibrationDuration(SharedPreferences prefs,boolean longPress) {
+        int duration=vibrationDuration(prefs);
+        return longPress?Math.min(100,Math.round(duration*5f/3f)):duration;
+    }
     static int holdDelay(SharedPreferences prefs) {
         return Math.max(150,Math.min(1000,prefs.getInt("holdDuration",300)));
     }

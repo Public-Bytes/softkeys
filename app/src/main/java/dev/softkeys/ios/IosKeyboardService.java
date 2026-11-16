@@ -33,6 +33,15 @@ public class IosKeyboardService extends InputMethodService {
     private int caret,selectionLength;
     private SharedPreferences prefs;
     private Vibrator vibrator;
+    private ClipboardManager clipboard;
+    private String clipboardText,clipboardPreview="";
+    private long clipboardTimestamp,dismissedClipboardTimestamp;
+    private static final long CLIPBOARD_LIFETIME=120_000;
+    private final Runnable expireClipboard=this::clearClipboardSuggestion;
+    private final ClipboardManager.OnPrimaryClipChangedListener clipboardListener=()->handler.post(()->{if(isInputViewShown())readClipboardSuggestion();});
+    private final SharedPreferences.OnSharedPreferenceChangeListener clipboardPreferenceListener=(settings,key)->{
+        if("clipboardSuggestions".equals(key)){if(isInputViewShown())readClipboardSuggestion();else clearClipboardSuggestion();}
+    };
     private String[] suggestions={"I","the","I'm"};
     private String correctionOriginal,correctionReplacement;
     private int correctionCaret=-1,glideLength;
@@ -46,6 +55,9 @@ public class IosKeyboardService extends InputMethodService {
     @Override public void onCreate(){
         super.onCreate();prefs=KeyboardPreferences.open(this);
         vibrator=Build.VERSION.SDK_INT>=31?getSystemService(VibratorManager.class).getDefaultVibrator():(Vibrator)getSystemService(VIBRATOR_SERVICE);
+        clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        if(clipboard!=null)clipboard.addPrimaryClipChangedListener(clipboardListener);
+        prefs.registerOnSharedPreferenceChangeListener(clipboardPreferenceListener);
         worker.execute(()->{
             try{dictionary=new EnglishDictionary(this);}catch(java.io.IOException ignored){}
             try{emojiCatalog=new EmojiCatalog(this);}catch(java.io.IOException ignored){}
@@ -83,12 +95,12 @@ public class IosKeyboardService extends InputMethodService {
         allowGlide=allowPredictions;
         symbols=second=emoji=caps=manualShift=emojiSearching=false;emojiPage=0;emojiQuery="";lastShift=lastSpace=0;
         if(Build.VERSION.SDK_INT>=30){CharSequence initial=info.getInitialTextBeforeCursor(256,0);if(initial!=null)before.append(initial);}
-        updateShift();refreshSuggestions();scheduleContextRead();rebuild();
+        updateShift();refreshSuggestions();scheduleContextRead();rebuild();readClipboardSuggestion();
     }
-    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null){if(keyboard.keys.isEmpty())rebuild();else keyboard.requestLayout();}}
+    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null){if(keyboard.keys.isEmpty())rebuild();else keyboard.requestLayout();}if(!restarting)readClipboardSuggestion();}
     @Override public void onFinishInput(){activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
     @Override public void onFinishInputView(boolean finishing){decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
-    @Override public void onDestroy(){worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override public void onDestroy(){if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
     @Override public void onUpdateSelection(int os,int oe,int ns,int ne,int cs,int ce){
         super.onUpdateSelection(os,oe,ns,ne,cs,ce);
         if(ns<0||ne<0)return;
@@ -98,6 +110,35 @@ public class IosKeyboardService extends InputMethodService {
         if(keyboard==null||!keyboard.cursorDragging())scheduleContextRead();
     }
     private void scheduleContextRead(){handler.removeCallbacks(readContext);if(activeInput&&(keyboard==null||!keyboard.cursorDragging()))handler.postDelayed(readContext,220);}
+    private void clearClipboardSuggestion(){
+        boolean changed=clipboardText!=null;clipboardText=null;clipboardPreview="";clipboardTimestamp=0;handler.removeCallbacks(expireClipboard);
+        if(changed&&keyboard!=null)keyboard.clipboardChanged();
+    }
+    private void dismissClipboardSuggestion(){if(clipboardText!=null)dismissedClipboardTimestamp=clipboardTimestamp;clearClipboardSuggestion();}
+    private void readClipboardSuggestion(){
+        if(!activeInput||privateField||numeric||clipboard==null||!prefs.getBoolean("clipboardSuggestions",true)){clearClipboardSuggestion();return;}
+        try{
+            ClipDescription description=clipboard.getPrimaryClipDescription();
+            if(description==null||description.getExtras()!=null&&description.getExtras().getBoolean(ClipDescription.EXTRA_IS_SENSITIVE,false)){clearClipboardSuggestion();return;}
+            long stamp=description.getTimestamp(),age=System.currentTimeMillis()-stamp;
+            if(stamp<=0||stamp==dismissedClipboardTimestamp||age<0||age>=CLIPBOARD_LIFETIME){clearClipboardSuggestion();return;}
+            ClipData clip=clipboard.getPrimaryClip();
+            CharSequence value=clip==null||clip.getItemCount()==0?null:clip.getItemAt(0).getText();
+            if(value==null||value.length()==0||value.length()>65536){clearClipboardSuggestion();return;}
+            String text=value.toString();if(text.trim().isEmpty()){clearClipboardSuggestion();return;}
+            // Metadata and contents are separate binder reads. Do not suggest a
+            // replacement clip with the timestamp or sensitivity of the old one.
+            if(clip.getDescription().getTimestamp()!=stamp||clip.getDescription().getExtras()!=null&&clip.getDescription().getExtras().getBoolean(ClipDescription.EXTRA_IS_SENSITIVE,false)){clearClipboardSuggestion();return;}
+            boolean changed=clipboardTimestamp!=stamp||!text.equals(clipboardText);
+            clipboardText=text;clipboardTimestamp=stamp;clipboardPreview=text.substring(0,Math.min(120,text.length())).replaceAll("\\s+"," ").trim();
+            handler.removeCallbacks(expireClipboard);handler.postDelayed(expireClipboard,CLIPBOARD_LIFETIME-age);
+            if(changed&&keyboard!=null)keyboard.clipboardChanged();
+        }catch(SecurityException ignored){clearClipboardSuggestion();}
+    }
+    private boolean clipboardVisible(){
+        long age=System.currentTimeMillis()-clipboardTimestamp;
+        return activeInput&&clipboardText!=null&&age>=0&&age<CLIPBOARD_LIFETIME&&prefs.getBoolean("clipboardSuggestions",true)&&allowPredictions&&!privateField&&!numeric&&!emoji&&!emojiSearching&&selectionLength==0&&glideLength==0&&!decodingGlide&&(keyboard==null||!keyboard.cursorDragging())&&prefix().isEmpty();
+    }
     private boolean isTerminalEditor(EditorInfo info){
         String name=String.valueOf(info.packageName).toLowerCase(Locale.US);
         if(name.contains("terminus")||name.contains("termius")||name.contains("termux")||name.equals("com.server.auditor.ssh.client"))return true;
@@ -109,7 +150,7 @@ public class IosKeyboardService extends InputMethodService {
         // Use the app's explicit vibration preference even when Android's general
         // touch feedback is off. No runtime permission prompt is needed for VIBRATE.
         if(vibrator!=null&&vibrator.hasVibrator()){
-            vibrator.vibrate(VibrationEffect.createOneShot(longPress?20:12,VibrationEffect.DEFAULT_AMPLITUDE));
+            vibrator.vibrate(VibrationEffect.createOneShot(KeyboardPreferences.vibrationDuration(prefs,longPress),VibrationEffect.DEFAULT_AMPLITUDE));
         }else if(keyboard!=null)keyboard.performHapticFeedback(longPress?HapticFeedbackConstants.LONG_PRESS:HapticFeedbackConstants.KEYBOARD_TAP);
     }
     private void readContextAsync(){
@@ -144,6 +185,7 @@ public class IosKeyboardService extends InputMethodService {
     }
     private void rebuild(){if(keyboard!=null){keyboard.arrange();keyboard.requestLayout();keyboard.invalidate();}}
     private void noteEdit(){
+        dismissClipboardSuggestion();
         revision++;selectionLength=0;manualShift=false;acknowledgements.addLast(caret);while(acknowledgements.size()>64)acknowledgements.removeFirst();
         if(before.length()>256)before.delete(0,before.length()-256);scheduleContextRead();updateShift();refreshSuggestions();
     }
@@ -205,6 +247,10 @@ public class IosKeyboardService extends InputMethodService {
         worker.execute(()->{if(token!=revision)return;List<String> result=dict.suggest(p);String correction=dict.correct(p);handler.post(()->{if(token!=revision||!activeInput||glideLength>0)return;correctionPrefix=p;cachedCorrection=correction;suggestions=result.toArray(new String[0]);keyboard.invalidateHeader();});});
     }
     private void chooseSuggestion(int i){
+        if(clipboardVisible()){
+            if(i==2){dismissClipboardSuggestion();return;}
+            if(i==0){String text=clipboardText;dismissClipboardSuggestion();commit(text);}return;
+        }
         if(i>=suggestions.length||suggestions[i].isEmpty())return;String selected=suggestions[i];int count=glideLength>0?glideLength:prefix().length();
         clearCorrection();glideLength=0;replaceTail(count,selected+" ");
     }
@@ -242,6 +288,7 @@ public class IosKeyboardService extends InputMethodService {
         else commit(delimiter);
     }
     private void finishGlide(float[] path,Map<Character,float[]> centers,float keyWidth,boolean upper){
+        dismissClipboardSuggestion();
         if(decodingGlide){pendingActions.add(()->finishGlide(path,centers,keyWidth,upper));return;}
         EnglishDictionary dict=dictionary;if(dict==null)return;long token=revision;decodingGlide=true;handler.removeCallbacks(readContext);
         worker.execute(()->{List<String> result=dict.glide(path,centers,keyWidth);handler.post(()->{
@@ -285,6 +332,7 @@ public class IosKeyboardService extends InputMethodService {
                 else{boundary(" ");lastSpace=now;}return;
             }
             case "return":{
+                dismissClipboardSuggestion();
                 if(emojiSearching){showEmojiResults();return;}
                 EditorInfo e=getCurrentInputEditorInfo();InputConnection ic=getCurrentInputConnection();if(ic==null)return;
                 int action=e==null?0:e.imeOptions&EditorInfo.IME_MASK_ACTION;
@@ -403,12 +451,24 @@ public class IosKeyboardService extends InputMethodService {
             for(int i=0;i<labels.length;i++){float end=x+w*(weights==null?1:weights[i])/total;String s=labels[i];keys.add(new Key(s,x,y,end,y+rowH,s.length()>1&&!s.equals("space")));x=end;}
         }
         void invalidateHeader(){invalidate(0,0,getWidth(),(int)suggestionH+1);}
+        void clipboardChanged(){
+            if(focused>=0&&focused<keys.size()&&!keyVisible(keys.get(focused)))focused=-1;
+            invalidateHeader();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+        private boolean keyVisible(Key key){return !clipboardVisible()||!key.value.equals("suggest:1");}
+        private void keyBounds(Key key,RectF bounds){
+            bounds.set(key.box);
+            if(clipboardVisible()){
+                if(key.value.equals("suggest:0"))bounds.right=width-dp(48);
+                else if(key.value.equals("suggest:2"))bounds.left=width-dp(48);
+            }
+        }
         void invalidateLetters(){invalidate(0,(int)suggestionH,getWidth(),Math.round(suggestionH+rowH*(3+numberRowOffset())));}
         private void invalidateKey(Key key){invalidate((int)key.box.left-dp(2),(int)key.box.top-dp(2),(int)key.box.right+dp(2),(int)key.box.bottom+dp(2));}
         private boolean letter(Key k){return k!=null&&k.value.length()==1&&k.value.charAt(0)>='a'&&k.value.charAt(0)<='z'&&!symbols&&!emoji&&!numeric;}
         private String label(Key k){
             if(cursorDragging())return "";
-            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));return i<suggestions.length?suggestions[i]:"";}
+            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i<suggestions.length?suggestions[i]:"";}
             if(k.value.startsWith("em:"))return k.value.substring(3);
             if(k.value.startsWith("cat:"))return EmojiCatalog.ICONS[Integer.parseInt(k.value.substring(4))];
             return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->"Voice input";case "return"->actionLabel();case "more"->second?"123":"#+=";case "emojinext"->"›";case "emojiprev"->"‹";case "emojisearch"->(emojiQuery.isEmpty()?EmojiCatalog.NAMES[emojiCategory]:"\""+emojiQuery+"\"")+"   "+(emojiPage+1)+"/"+emojiPages+"   ⌕";case "emojiquery"->emojiQuery.isEmpty()?"Search emoji":emojiQuery;case "emojidone"->"Search";default->!symbols&&!emoji&&shift?k.value.toUpperCase(Locale.US):k.value;};
@@ -420,13 +480,23 @@ public class IosKeyboardService extends InputMethodService {
             }
             if(emoji&&visibleEmoji.isEmpty()){paint.setColor(foreground);paint.setAlpha(180);paint.setTextSize(dp(16));drawText(canvas,emojiCatalog==null?"Loading emoji…":"No emoji found",width/2,suggestionH+rowH*1.5f);}
             for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(!t.gliding)continue;trail.reset();for(int j=0;j<t.points.size();j+=2){if(j==0)trail.moveTo(t.points.get(j),t.points.get(j+1));else trail.lineTo(t.points.get(j),t.points.get(j+1));}trailShadow.setStrokeWidth(dp(6));trailShadow.setAlpha(35);canvas.drawPath(trail,trailShadow);trailPaint.setStrokeWidth(dp(4));trailPaint.setAlpha(215);canvas.drawPath(trail,trailPaint);}
-            if(focused>=0&&focused<keys.size()){paint.setColor(0xff69a9ff);paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));canvas.drawRoundRect(keys.get(focused).box,keyRadius,keyRadius,paint);paint.setStyle(Paint.Style.FILL);}
+            if(focused>=0&&focused<keys.size()&&keyVisible(keys.get(focused))){paint.setColor(0xff69a9ff);paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));keyBounds(keys.get(focused),rect);canvas.drawRoundRect(rect,keyRadius,keyRadius,paint);paint.setStyle(Paint.Style.FILL);}
             canvas.restore();
         }
         private void drawKey(Canvas canvas,Key k){
+            if(!keyVisible(k))return;
             String label=label(k);boolean suggestion=k.value.startsWith("suggest:"),category=k.value.startsWith("cat:"),em=k.value.startsWith("em:");
             boolean pressed=false;for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.highlight==k&&!t.gliding)pressed=true;}
             paint.setStyle(Paint.Style.FILL);paint.setColor(foreground);paint.setAlpha(255);
+            if(suggestion&&clipboardVisible()){
+                keyBounds(k,rect);
+                if(k.value.equals("suggest:0")){
+                    rect.inset(dp(10),dp(4));paint.setColor(pressed?blend(keyColor,foreground,.12f):keyColor);canvas.drawRoundRect(rect,dp(12),dp(12),paint);
+                    paint.setColor(foreground);paint.setTextSize(dp(wide?14:15));paint.setTextAlign(Paint.Align.LEFT);
+                    String preview=android.text.TextUtils.ellipsize("Paste  "+clipboardPreview,new android.text.TextPaint(paint),Math.max(1,rect.width()-dp(24)),android.text.TextUtils.TruncateAt.END).toString();
+                    canvas.drawText(preview,rect.left+dp(12),rect.centerY()-(paint.ascent()+paint.descent())/2,paint);
+                }else{paint.setTextSize(dp(22));drawText(canvas,"×",rect.centerX(),rect.centerY());}return;
+            }
             if(suggestion||k.box.top==0){
                 paint.setTextSize(dp(emoji?14:wide?14:15.5f));drawText(canvas,label,k.box.centerX(),k.box.centerY());
                 if(suggestion&&!k.value.equals("suggest:2")){paint.setColor(divider);canvas.drawRect(k.box.right-dp(.5f),dp(10),k.box.right+dp(.5f),suggestionH-dp(10),paint);}return;
@@ -463,7 +533,7 @@ public class IosKeyboardService extends InputMethodService {
             }
             paint.setStyle(Paint.Style.FILL);c.restore();
         }
-        private Key hit(float x,float y){for(Key k:keys)if(k.box.contains(x,y))return k;return null;}
+        private Key hit(float x,float y){for(Key k:keys){if(!keyVisible(k))continue;keyBounds(k,rect);if(rect.contains(x,y))return k;}return null;}
         private void showPreview(Touch touch,int pointer){
             handler.removeCallbacks(dismissPreview);
             Key key=touch.key;
@@ -492,7 +562,7 @@ public class IosKeyboardService extends InputMethodService {
         private void startCursorDrag(Touch t,int id){
             if(touches.get(id)!=t)return;
             if(decodingGlide){pendingActions.add(()->startCursorDrag(t,id));return;}
-            t.held=t.cursor=true;cursorPointer=id;revision++;acknowledgements.clear();clearCorrection();glideLength=0;lastSpace=0;hidePreview();
+            t.held=t.cursor=true;cursorPointer=id;dismissClipboardSuggestion();revision++;acknowledgements.clear();clearCorrection();glideLength=0;lastSpace=0;hidePreview();
             handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);
             haptic(true);invalidate();
         }
@@ -576,13 +646,13 @@ public class IosKeyboardService extends InputMethodService {
         @Override public boolean dispatchHoverEvent(MotionEvent e){AccessibilityManager m=(AccessibilityManager)getSystemService(ACCESSIBILITY_SERVICE);if(!m.isTouchExplorationEnabled())return super.dispatchHoverEvent(e);Key k=hit(e.getX(),e.getY());int id=k==null?-1:keys.indexOf(k);if(e.getAction()==MotionEvent.ACTION_HOVER_EXIT)id=-1;if(id!=hover){if(hover>=0)event(hover,AccessibilityEvent.TYPE_VIEW_HOVER_EXIT);hover=id;if(id>=0)event(id,AccessibilityEvent.TYPE_VIEW_HOVER_ENTER);}return true;}
         private final class Nodes extends AccessibilityNodeProvider {
             @Override public AccessibilityNodeInfo createAccessibilityNodeInfo(int id){
-                if(id==View.NO_ID){AccessibilityNodeInfo n=AccessibilityNodeInfo.obtain(KeyboardView.this);onInitializeAccessibilityNodeInfo(n);for(int i=0;i<keys.size();i++)n.addChild(KeyboardView.this,i);return n;}
-                if(id<0||id>=keys.size())return null;Key k=keys.get(id);AccessibilityNodeInfo n=AccessibilityNodeInfo.obtain();n.setSource(KeyboardView.this,id);n.setParent(KeyboardView.this);n.setPackageName(getPackageName());n.setClassName("android.widget.Button");n.setContentDescription(accessibilityLabel(k));n.setText(accessibilityLabel(k));n.setEnabled(true);n.setClickable(true);n.setFocusable(true);n.setVisibleToUser(isShown());n.setAccessibilityFocused(focused==id);n.addAction(AccessibilityNodeInfo.ACTION_CLICK);n.addAction(focused==id?AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS:AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+                if(id==View.NO_ID){AccessibilityNodeInfo n=AccessibilityNodeInfo.obtain(KeyboardView.this);onInitializeAccessibilityNodeInfo(n);for(int i=0;i<keys.size();i++)if(keyVisible(keys.get(i)))n.addChild(KeyboardView.this,i);return n;}
+                if(id<0||id>=keys.size()||!keyVisible(keys.get(id)))return null;Key k=keys.get(id);AccessibilityNodeInfo n=AccessibilityNodeInfo.obtain();n.setSource(KeyboardView.this,id);n.setParent(KeyboardView.this);n.setPackageName(getPackageName());n.setClassName("android.widget.Button");n.setContentDescription(accessibilityLabel(k));n.setText(accessibilityLabel(k));n.setEnabled(true);n.setClickable(true);n.setFocusable(true);n.setVisibleToUser(isShown());n.setAccessibilityFocused(focused==id);n.addAction(AccessibilityNodeInfo.ACTION_CLICK);n.addAction(focused==id?AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS:AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
                 if(k.value.equals("space")){n.setLongClickable(true);n.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK);}
                 if(k.value.startsWith("em:")&&emojiCatalog!=null){EmojiCatalog.Item item=emojiCatalog.byEmoji.get(k.value.substring(3));if(item!=null&&!item.variants.isEmpty()){n.setLongClickable(true);n.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK);}}
-                Rect r=new Rect();k.box.roundOut(r);n.setBoundsInParent(r);int[] xy=new int[2];getLocationOnScreen(xy);r.offset(xy[0],xy[1]);n.setBoundsInScreen(r);return n;
+                Rect r=new Rect();RectF bounds=new RectF();keyBounds(k,bounds);bounds.roundOut(r);n.setBoundsInParent(r);int[] xy=new int[2];getLocationOnScreen(xy);r.offset(xy[0],xy[1]);n.setBoundsInScreen(r);return n;
             }
-            @Override public boolean performAction(int id,int action,Bundle args){if(id<0||id>=keys.size())return false;Key key=keys.get(id);if(action==AccessibilityNodeInfo.ACTION_CLICK){press(key.value);event(id,AccessibilityEvent.TYPE_VIEW_CLICKED);return true;}if(action==AccessibilityNodeInfo.ACTION_LONG_CLICK&&key.value.equals("space")){announceForAccessibility("Hold Space and drag to move the cursor");return true;}if(action==AccessibilityNodeInfo.ACTION_LONG_CLICK&&key.value.startsWith("em:")&&emojiCatalog!=null){EmojiCatalog.Item item=emojiCatalog.byEmoji.get(key.value.substring(3));if(item!=null&&!item.variants.isEmpty()){List<String> variants=new ArrayList<>();variants.add(item.emoji);variants.addAll(item.variants);showVariants(key,variants,false);return true;}}if(action==AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS){focused=id;event(id,AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);invalidateKey(key);return true;}if(action==AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS){focused=-1;event(id,AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);invalidateKey(key);return true;}return false;}
+            @Override public boolean performAction(int id,int action,Bundle args){if(id<0||id>=keys.size()||!keyVisible(keys.get(id)))return false;Key key=keys.get(id);if(action==AccessibilityNodeInfo.ACTION_CLICK){press(key.value);event(id,AccessibilityEvent.TYPE_VIEW_CLICKED);return true;}if(action==AccessibilityNodeInfo.ACTION_LONG_CLICK&&key.value.equals("space")){announceForAccessibility("Hold Space and drag to move the cursor");return true;}if(action==AccessibilityNodeInfo.ACTION_LONG_CLICK&&key.value.startsWith("em:")&&emojiCatalog!=null){EmojiCatalog.Item item=emojiCatalog.byEmoji.get(key.value.substring(3));if(item!=null&&!item.variants.isEmpty()){List<String> variants=new ArrayList<>();variants.add(item.emoji);variants.addAll(item.variants);showVariants(key,variants,false);return true;}}if(action==AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS){focused=id;event(id,AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);invalidateKey(key);return true;}if(action==AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS){focused=-1;event(id,AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);invalidateKey(key);return true;}return false;}
             @Override public AccessibilityNodeInfo findFocus(int focus){return focused<0?null:createAccessibilityNodeInfo(focused);}
         }
     }

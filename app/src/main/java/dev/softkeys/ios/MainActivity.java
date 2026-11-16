@@ -1,7 +1,7 @@
 package dev.softkeys.ios;
 
 import android.app.Activity;
-import android.os.Bundle;
+import android.os.*;
 import android.content.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -15,10 +15,12 @@ public class MainActivity extends Activity {
     private LinearLayout page;
     private TextView status;
     private EditText sample;
+    private TextView vibrationSetting;
+    private Vibrator vibrator;
     private android.content.SharedPreferences prefs;
     int ink=Color.rgb(34,34,39), muted=Color.rgb(107,105,117);
     int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
-    @Override public void onCreate(Bundle state){super.onCreate(state); prefs=KeyboardPreferences.open(this); render();}
+    @Override public void onCreate(Bundle state){super.onCreate(state); prefs=KeyboardPreferences.open(this);vibrator=Build.VERSION.SDK_INT>=31?getSystemService(VibratorManager.class).getDefaultVibrator():(Vibrator)getSystemService(VIBRATOR_SERVICE);render();}
     @Override public void onResume(){super.onResume();updateStatus();}
     @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)updateStatus();}
     private void updateStatus(){
@@ -67,6 +69,7 @@ public class MainActivity extends Activity {
         toggle("Tablet number row", "tabletNumberRow", true);
         page.addView(text("Show a dedicated number row on wide displays, including unfolded phones.",13,muted));gap(8);
         toggle("Haptic feedback", "haptic", true);
+        vibrationSetting=button(vibrationLabel(),this::showVibrationSettings,false);
         toggle("Key popups", "keyPopups", true);
         TextView holdLabel=text("Touch and hold duration: "+KeyboardPreferences.holdDelay(prefs)+" ms",16,ink);page.addView(holdLabel);gap(4);
         SeekBar holdDuration=new SeekBar(this);holdDuration.setMax(34);holdDuration.setProgress((KeyboardPreferences.holdDelay(prefs)-150)/25);holdDuration.setContentDescription(holdLabel.getText());
@@ -78,6 +81,8 @@ public class MainActivity extends Activity {
         page.addView(text("Choose 150 to 1000 ms. Applies to accents, emoji variants, cursor control, Caps Lock, and repeated deletion.",13,muted));gap(12);
         toggle("Autocorrect", "autocorrect", true);
         toggle("Glide typing", "glide", true);
+        toggle("Clipboard suggestions", "clipboardSuggestions", true);
+        page.addView(text("Recently copied text appears above the keys for up to two minutes. Paste it, dismiss it, or start typing to hide it. No clipboard history is saved.",13,muted));gap(8);
         toggle("Automatic capitalization", "autocaps", true);
         toggle("Double-space period", "doubleSpacePeriod", true);
         page.addView(text("Slide through letters to type a word. Tap a suggestion to change it. Press Backspace immediately after an automatic correction to restore your spelling.",13,muted));gap(12);
@@ -93,5 +98,26 @@ public class MainActivity extends Activity {
         setContentView(scroll);
     }
     void toggle(String label,String key,boolean fallback){Switch option=new Switch(this);option.setText(label);option.setTextColor(ink);option.setChecked(prefs.getBoolean(key,fallback));option.setOnCheckedChangeListener((button,checked)->prefs.edit().putBoolean(key,checked).apply());page.addView(option,new LinearLayout.LayoutParams(-1,dp(52)));}
-    void button(String label,Runnable action,boolean primary){TextView b=text(label,16,primary?Color.WHITE:ink);b.setTypeface(null,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setBackground(bg(primary?ink:0xffe8e4ee,14));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(8);page.addView(b,lp);b.setOnClickListener(v->action.run());b.setFocusable(true);b.setAccessibilityDelegate(new View.AccessibilityDelegate(){@Override public void onInitializeAccessibilityNodeInfo(View host,android.view.accessibility.AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName("android.widget.Button");}});}
+    private String vibrationLabel(){return "Keypress vibration: "+KeyboardPreferences.vibrationDuration(prefs)+" ms";}
+    private void previewVibration(int duration){if(prefs.getBoolean("haptic",true)&&vibrator!=null&&vibrator.hasVibrator())vibrator.vibrate(VibrationEffect.createOneShot(duration,VibrationEffect.DEFAULT_AMPLITUDE));}
+    private void showVibrationSettings(){
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(24),dp(8),dp(24),dp(8));
+        TextView explanation=text("Choose 1 to 100 ms. Shorter vibrations feel lighter. Previews play while Haptic feedback is on.",14,muted);content.addView(explanation);
+        LinearLayout valueRow=new LinearLayout(this);valueRow.setGravity(Gravity.CENTER);EditText value=new EditText(this);value.setTextColor(ink);value.setTextSize(24);value.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);value.setSingleLine(true);value.setSelectAllOnFocus(true);value.setGravity(Gravity.CENTER);value.setContentDescription("Vibration duration in milliseconds");value.setText(String.valueOf(KeyboardPreferences.vibrationDuration(prefs)));valueRow.addView(value,new LinearLayout.LayoutParams(dp(88),dp(56)));valueRow.addView(text("ms",18,muted));content.addView(valueRow);
+        SeekBar strength=new SeekBar(this);strength.setMax(99);strength.setProgress(KeyboardPreferences.vibrationDuration(prefs)-1);strength.setContentDescription(vibrationLabel());content.addView(strength,new LinearLayout.LayoutParams(-1,dp(52)));
+        final long[] lastPreview={0};
+        strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar bar,int progress,boolean fromUser){int duration=progress+1;bar.setContentDescription("Keypress vibration: "+duration+" ms");if(fromUser){value.setText(String.valueOf(duration));value.setSelection(value.length());long now=SystemClock.uptimeMillis();if(now-lastPreview[0]>=80){previewVibration(duration);lastPreview[0]=now;}}}
+            public void onStartTrackingTouch(SeekBar bar){}
+            public void onStopTrackingTouch(SeekBar bar){previewVibration(bar.getProgress()+1);}
+        });
+        value.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){try{int duration=Integer.parseInt(s.toString());if(duration>=1&&duration<=100)strength.setProgress(duration-1);}catch(NumberFormatException ignored){}}public void afterTextChanged(android.text.Editable text){}});
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Keypress vibration").setView(content).setNeutralButton("Default",null).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        dialog.setOnShowListener(ignored->{
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{value.setText(String.valueOf(KeyboardPreferences.DEFAULT_VIBRATION_DURATION));previewVibration(KeyboardPreferences.DEFAULT_VIBRATION_DURATION);});
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{int duration;try{duration=Integer.parseInt(value.getText().toString());}catch(NumberFormatException invalid){value.setError("Enter 1 to 100 ms");return;}if(duration<1||duration>100){value.setError("Enter 1 to 100 ms");return;}prefs.edit().putInt("vibrationDuration",duration).apply();vibrationSetting.setText(vibrationLabel());previewVibration(duration);dialog.dismiss();});
+        });dialog.show();
+    }
+    TextView button(String label,Runnable action,boolean primary){TextView b=text(label,16,primary?Color.WHITE:ink);b.setTypeface(null,Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setBackground(bg(primary?ink:0xffe8e4ee,14));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(8);page.addView(b,lp);b.setOnClickListener(v->action.run());b.setFocusable(true);b.setAccessibilityDelegate(new View.AccessibilityDelegate(){@Override public void onInitializeAccessibilityNodeInfo(View host,android.view.accessibility.AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName("android.widget.Button");}});return b;}
 }
