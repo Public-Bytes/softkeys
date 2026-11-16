@@ -64,6 +64,8 @@ public class MainActivity extends Activity {
         for(int i=0;i<names.length;i++){RadioButton radio=new RadioButton(this);radio.setText(names[i]);radio.setTextColor(ink);radio.setId(100+values[i]);themes.addView(radio,new RadioGroup.LayoutParams(-1,dp(44)));if(prefs.getInt("theme",3)==values[i])radio.setChecked(true);}
         themes.setOnCheckedChangeListener((g,id)->prefs.edit().putInt("theme",id-100).apply());page.addView(themes);
         page.addView(text("Reference uses light gray on narrow displays and lavender on wide displays.",13,muted));gap(8);
+        toggle("Tablet number row", "tabletNumberRow", true);
+        page.addView(text("Show a dedicated number row on wide displays, including unfolded phones.",13,muted));gap(8);
         toggle("Haptic feedback", "haptic", true);
         toggle("Key popups", "keyPopups", true);
         TextView holdLabel=text("Touch and hold duration: "+KeyboardPreferences.holdDelay(prefs)+" ms",16,ink);page.addView(holdLabel);gap(4);

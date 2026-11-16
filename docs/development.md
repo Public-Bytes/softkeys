@@ -40,6 +40,7 @@ Autocorrect, glide typing, and field privacy are handled separately. Changes to 
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `theme` | `3` | Reference appearance. Dark is 0, Lavender is 1, and System is 2. |
+| `tabletNumberRow` | `true` | Dedicated digits on layouts at least 600 dp wide. Also retained on symbol pages. |
 | `autocorrect` | `true` | Automatic spelling replacements. |
 | `glide` | `true` | Gesture word entry. |
 | `autocaps` | `true` | Capitalization requested by the editor. |

@@ -85,7 +85,7 @@ public class IosKeyboardService extends InputMethodService {
         if(Build.VERSION.SDK_INT>=30){CharSequence initial=info.getInitialTextBeforeCursor(256,0);if(initial!=null)before.append(initial);}
         updateShift();refreshSuggestions();scheduleContextRead();rebuild();
     }
-    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null&&keyboard.keys.isEmpty())rebuild();}
+    @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null){if(keyboard.keys.isEmpty())rebuild();else keyboard.requestLayout();}}
     @Override public void onFinishInput(){activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
     @Override public void onFinishInputView(boolean finishing){decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
     @Override public void onDestroy(){worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
@@ -358,7 +358,7 @@ public class IosKeyboardService extends InputMethodService {
                 keyRadius=dp(9.5f);topRadius=dp(24);
             }
             categoryH=dp(34);contentWidth=width-2*contentLeft;
-            int height=Math.round(suggestionH+rowH*4+(emoji?categoryH:0)+navBottom+dp(4));
+            int height=Math.round(suggestionH+rowH*(4+numberRowOffset())+(emoji?categoryH:0)+navBottom+dp(4));
             setMeasuredDimension((int)width,height);
             if(wasWide!=wide)palette();
             if(layoutWidth!=(int)width||layoutHeight!=height){
@@ -381,27 +381,29 @@ public class IosKeyboardService extends InputMethodService {
                 float top=suggestionH+rowH*3;for(int i=0;i<EmojiCatalog.NAMES.length;i++)keys.add(new Key("cat:"+i,width*i/10,top,width*(i+1)/10,top+categoryH,true));
                 rowAt(new String[]{"ABC","emojiprev","emojinext","space","delete","return"},top+categoryH,contentLeft,contentWidth,new float[]{1.5f,1,1,3.5f,1.5f,1.5f});
             }else{
+                if(numberRowOffset()>0)rowAt(chars("1234567890"),suggestionH,contentLeft,contentWidth,null);
                 if(!symbols){
                     row(chars("qwertyuiop"),0,contentLeft,contentWidth,null);
                     row(chars("asdfghjkl"),1,contentLeft+contentWidth*.05f,contentWidth*.9f,null);
                     row(new String[]{"shift","z","x","c","v","b","n","m","delete"},2,contentLeft,contentWidth,new float[]{1.5f,1,1,1,1,1,1,1,1.5f});
                 }else{
-                    row(second?new String[]{"[","]","{","}","#","%","^","*","+","="}:chars("1234567890"),0,contentLeft,contentWidth,null);
-                    row(second?new String[]{"_","\\","|","~","<",">","€","£","¥","•"}:new String[]{"-","/",":",";","(",")","$","&","@","\""},1,contentLeft,contentWidth,null);
+                    row(second?new String[]{"[","]","{","}","#","%","^","*","+","="}:chars(numberRowOffset()>0?"!@#$%^&*()":"1234567890"),0,contentLeft,contentWidth,null);
+                    row(second?new String[]{"_","\\","|","~","<",">","€","£","¥","•"}:numberRowOffset()>0?new String[]{"-","/",":",";","[","]","+","=","_","\""}:new String[]{"-","/",":",";","(",")","$","&","@","\""},1,contentLeft,contentWidth,null);
                     row(new String[]{"more",".",",","?","!","'","delete"},2,contentLeft,contentWidth,new float[]{1.7f,1,1,1,1,1,1.5f});
                 }
-                row(new String[]{"emoji",symbols?"ABC":"123","space","return","voice"},3,contentLeft,contentWidth,wide?new float[]{.7f,1.5f,5.6f,1.5f,.7f}:new float[]{1.1f,2,3.8f,2,1.1f});
+                row(new String[]{"emoji",symbols?"ABC":"123","space","voice","return"},3,contentLeft,contentWidth,wide?new float[]{.7f,1.5f,5.6f,.7f,1.5f}:new float[]{1.1f,2,3.8f,1.1f,2});
             }
             invalidate();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
         private String[] chars(String text){String[] a=new String[text.length()];for(int i=0;i<a.length;i++)a[i]=text.substring(i,i+1);return a;}
-        private void row(String[] labels,int n,float x,float w,float[] weights){rowAt(labels,suggestionH+n*rowH,x,w,weights);}
+        private int numberRowOffset(){return wide&&!numeric&&!emoji&&prefs.getBoolean("tabletNumberRow",true)?1:0;}
+        private void row(String[] labels,int n,float x,float w,float[] weights){rowAt(labels,suggestionH+(n+numberRowOffset())*rowH,x,w,weights);}
         private void rowAt(String[] labels,float y,float x,float w,float[] weights){
             float total=0;for(int i=0;i<labels.length;i++)total+=weights==null?1:weights[i];
             for(int i=0;i<labels.length;i++){float end=x+w*(weights==null?1:weights[i])/total;String s=labels[i];keys.add(new Key(s,x,y,end,y+rowH,s.length()>1&&!s.equals("space")));x=end;}
         }
         void invalidateHeader(){invalidate(0,0,getWidth(),(int)suggestionH+1);}
-        void invalidateLetters(){invalidate(0,(int)suggestionH,getWidth(),Math.round(suggestionH+rowH*3));}
+        void invalidateLetters(){invalidate(0,(int)suggestionH,getWidth(),Math.round(suggestionH+rowH*(3+numberRowOffset())));}
         private void invalidateKey(Key key){invalidate((int)key.box.left-dp(2),(int)key.box.top-dp(2),(int)key.box.right+dp(2),(int)key.box.bottom+dp(2));}
         private boolean letter(Key k){return k!=null&&k.value.length()==1&&k.value.charAt(0)>='a'&&k.value.charAt(0)<='z'&&!symbols&&!emoji&&!numeric;}
         private String label(Key k){
