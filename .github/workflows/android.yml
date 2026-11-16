@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      upload_apk:
+        description: Upload the unsigned APK to Actions artifact storage
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -42,6 +48,7 @@ jobs:
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 
       - name: Upload unsigned build
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_apk
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SoftKeys-unsigned-${{ github.sha }}

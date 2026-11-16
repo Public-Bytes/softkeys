@@ -63,7 +63,7 @@ Use sample text when capturing screenshots. The probe shows entered text on scre
 
 Increment `versionCode` and `versionName` in `app/build.gradle` for each new installable update. Build the release APK, align it with `zipalign`, and sign it with the existing release key using `apksigner`. Verify the signature, alignment, version, and SHA-256 before attaching it to a GitHub Release.
 
-Keep the signing key and passwords outside the repository. The release certificate must stay the same so users can update existing installations. GitHub Actions produces an unsigned build artifact and does not have the signing key.
+Keep the signing key and passwords outside the repository. The release certificate must stay the same so users can update existing installations. GitHub Actions checks an unsigned release build and does not have the signing key. Uploading the unsigned APK is an option on manual workflow runs and requires available Actions artifact storage.
 
 Attach the signed APK and its checksum to a release tagged at the source commit. Record the build and review results in the release notes, including any editor compatibility that remains unverified.
 

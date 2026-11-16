@@ -83,7 +83,7 @@ cd softkeys
 ./gradlew :app:assembleRelease --console=plain
 ```
 
-The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions also builds an unsigned APK. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
+The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions checks the unsigned release build. Manual workflow runs can also upload the unsigned APK when Actions storage is available. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
 
 See [Development](docs/development.md) for the source layout, the sample editor, and release guidance.
 
