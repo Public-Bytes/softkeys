@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.5
+
+Added a dedicated 1 through 0 number row on wide displays, including unfolded phones. The row is enabled by default and can be turned off with the Tablet number row switch. Digits stay visible on both symbol pages so switching between letters and symbols keeps the same keyboard height. Narrow phone layouts retain their existing row count.
+
+Swapped the microphone and Enter positions on the letter and symbol layouts. Enter is now the wide key at the far right, and the microphone sits beside Space.
+
+The microphone continues to switch to Android's enabled voice input keyboard. Devices using Google voice typing will show Google's dictation panel. SoftKeys does not implement its own speech recognition.
+
+The release build completed, and native Android captures were reviewed at 1248 by 1972 and 1822 by 1376 pixels. The captures show the phone layout, the tablet number row, and the tablet symbol page. No automated tests were added or run.
+
 ## 1.4
 
 ### Typing controls

@@ -6,11 +6,11 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Typing and predictions stay on the device, and the app has no network permission. The current release is **1.4**.
+SoftKeys runs on Android 8.0 and later. Typing and predictions stay on the device, and the app has no network permission. The current release is **1.5**.
 
 ## Appearance
 
-The default Reference theme uses light gray with white keys on narrow displays and lavender on wide displays. Both layouts use continuous rows with one space bar. Dark, Lavender, and System themes are also available.
+The default Reference theme uses light gray with white keys on narrow displays and lavender on wide displays. Both layouts use continuous rows with one space bar. Wide displays include a dedicated number row by default. Enter sits at the far right of the bottom row, with the microphone beside Space. Dark, Lavender, and System themes are also available.
 
 <table>
   <tr>
@@ -23,11 +23,11 @@ The default Reference theme uses light gray with white keys on narrow displays a
   </tr>
 </table>
 
-The captures show the Reference layout introduced in 1.3, which is retained in 1.4. They use a sample editor and contain no personal messages.
+The captures show the 1.5 Reference layout on narrow and wide displays. They use a sample editor and contain no personal messages.
 
 ## Install
 
-1. Download `SoftKeys-1.4.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.5.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -54,6 +54,8 @@ Glide entry and suggestions remain available in email fields and recognized term
 ## Settings
 
 Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, automatic capitalization, double-space periods, haptic feedback, and key popups.
+
+The **Tablet number row** switch controls the dedicated digits on wide displays, including unfolded phones. It is enabled by default and does not add a row to narrow phone layouts. The row stays visible when switching between letters and symbols.
 
 Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25 ms steps. The setting applies to accents, emoji variants, cursor control, held Shift, and repeated deletion. Turning off automatic capitalization leaves manual Shift and Caps Lock available.
 
