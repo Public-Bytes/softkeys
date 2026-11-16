@@ -46,8 +46,12 @@ Autocorrect, glide typing, and field privacy are handled separately. Changes to 
 | `autocaps` | `true` | Capitalization requested by the editor. |
 | `doubleSpacePeriod` | `true` | Replace a second space after a word with a period and space. |
 | `haptic` | `true` | Key vibration and hold feedback. |
+| `vibrationDuration` | `12` | Keypress pulse in milliseconds, bounded to 1 through 100. Hold feedback scales with it. |
+| `clipboardSuggestions` | `true` | Recent copied text in the suggestion strip, with a two-minute lifetime and no saved history. |
 | `keyPopups` | `true` | Enlarged character preview. |
 | `holdDuration` | `300` | Hold delay in milliseconds, bounded to 150 through 1000. |
+
+Clipboard suggestions use `ClipDescription.getTimestamp()` to reject old items and a delayed callback to clear eligible text. Pasting, dismissing, or typing clears the in-memory text and remembers only the dismissed copy timestamp for the service lifetime. The same item is not offered again during that service session. No clipboard content or history is written to preferences or files. Clipboard updates use existing header keys with adjusted drawing, hit areas, and accessibility bounds, without rebuilding the letter rows.
 
 ## Sample editor
 

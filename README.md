@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Typing and predictions stay on the device, and the app has no network permission. The current release is **1.5**.
+SoftKeys runs on Android 8.0 and later. Typing and predictions stay on the device, and the app has no network permission. The current release is **1.6**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.5.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.6.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -44,6 +44,7 @@ The release uses the same signing certificate as the previous signed SoftKeys do
 | Accents | Hold a letter, then choose a variant. |
 | Capitals | Tap Shift for uppercase. Double-tap or hold Shift for Caps Lock. |
 | Repeated deletion | Hold Backspace. |
+| Clipboard suggestion | Tap the Paste chip above the keys to insert recently copied text. Tap its close button to dismiss it. |
 | Emoji | Open the emoji picker for categories, search, and recent selections. Swipe to change pages. Hold an emoji with a dot below it for variants. |
 | Voice input | Tap the microphone to switch to an enabled voice keyboard. Android opens the keyboard picker if none is enabled. |
 
@@ -53,25 +54,29 @@ Glide entry and suggestions remain available in email fields and recognized term
 
 ## Settings
 
-Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, automatic capitalization, double-space periods, haptic feedback, and key popups.
+Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups.
+
+Open **Keypress vibration** to choose a duration from 1 to 100 ms using a slider or an exact number, including 2 ms. Moving the slider previews the vibration when Haptic feedback is on. Save keeps the value, Cancel preserves the previous value, and Default selects the existing 12 ms default. Hold feedback adjusts with the chosen duration.
+
+Clipboard suggestions use the time the text was copied and expire after two minutes. A suggestion disappears when pasted, dismissed, or edited text is entered. The same item stays dismissed until a new item is copied, even when another editor opens. Suggestions stay out of password fields and do not preview clips marked sensitive by the copying app. No clipboard history is saved, and dismissing a suggestion leaves Android's clipboard unchanged.
 
 The **Tablet number row** switch controls the dedicated digits on wide displays, including unfolded phones. It is enabled by default and does not add a row to narrow phone layouts. The row stays visible when switching between letters and symbols.
 
 Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25 ms steps. The setting applies to accents, emoji variants, cursor control, held Shift, and repeated deletion. Turning off automatic capitalization leaves manual Shift and Caps Lock available.
 
 <details>
-<summary>View the 1.4 settings and key popup</summary>
+<summary>View the vibration and clipboard controls</summary>
 
 <p>
-  <img src="docs/images/settings.png" alt="SoftKeys settings with independent typing switches and a 300 ms hold duration" width="300">
-  <img src="docs/images/key-popup.png" alt="An enlarged Q popup above the pressed key" width="300">
+  <img src="docs/images/vibration.png" alt="SoftKeys vibration dialog with an exact 2 ms value and slider" width="300">
+  <img src="docs/images/clipboard.png" alt="A recently copied text suggestion with a Paste chip and dismiss button" width="300">
 </p>
 
 </details>
 
 ## Privacy and permissions
 
-SoftKeys does not save typed text or send it over the network. Keyboard settings and recent emoji selections are saved locally. The keyboard reads nearby editor text to provide suggestions and corrections.
+SoftKeys does not save typed text or send it over the network. Keyboard settings and recent emoji selections are saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
 
 The app requests only Android's normal `VIBRATE` permission for haptic feedback. It has no network, microphone, contacts, or storage permissions. Voice recognition is handled by the voice keyboard selected through Android.
 
