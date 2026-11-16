@@ -1,0 +1,33 @@
+# Build output and local Android SDK configuration.
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Local downloads, old copies, emulator tools, and temporary hosting.
+/artifacts/
+/backups/
+/share/
+/tools/
+__pycache__/
+*.pyc
+
+# Signing material and credentials stay outside version control.
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+*.apk
+*.aab
+*.idsig
+
+# Host instructions are not part of the application source.
+AGENTS.md
+AGENTS.override.md
