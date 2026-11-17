@@ -1,0 +1,832 @@
+# SoftKeys additions to english.tsv. This file is original to SoftKeys.
+# The subtitle word list splits contractions at the apostrophe, so it has no contractions.
+# A line with a word and a count adds the word or replaces its count. The counts for contractions
+# are estimates. A count of 0 removes a fragment or a common misspelling from the word list.
+# A line with only a word sets how an existing word is capitalized.
+don't	4158644
+I'm	4400000
+it's	4700000
+that's	2900000
+you're	2600000
+can't	1800000
+I'll	1500000
+he's	1450000
+what's	1300000
+didn't	1100643
+I've	1100000
+we're	1050000
+there's	1000000
+she's	880000
+let's	600000
+they're	700000
+won't	490000
+I'd	480000
+we'll	480000
+here's	480000
+doesn't	471037
+you'll	450000
+you've	480000
+isn't	429536
+who's	340000
+we've	340000
+wasn't	312240
+wouldn't	288422
+where's	270000
+haven't	250000
+couldn't	233368
+you'd	200000
+how's	190000
+aren't	178286
+ain't	166551
+he'll	150000
+they'll	130000
+it'll	120000
+they've	120000
+shouldn't	117029
+he'd	110000
+we'd	110000
+ma'am	105000
+she'll	90000
+weren't	88427
+hasn't	70449
+she'd	70000
+they'd	70000
+that'll	60000
+something's	60000
+everything's	60000
+c'mon	55000
+should've	50000
+hadn't	44545
+could've	40000
+must've	40000
+nothing's	40000
+someone's	40000
+y'all	40000
+would've	30000
+everybody's	30000
+everyone's	30000
+somebody's	30000
+nobody's	25000
+o'clock	23000
+when's	20000
+what're	20000
+mustn't	17276
+it'd	15000
+who'd	12000
+there'll	12000
+who'll	10000
+what'll	10000
+why's	8000
+might've	8000
+needn't	5234
+shan't	4763
+there'd	5000
+how'd	9000
+where'd	9000
+why'd	6000
+who've	6000
+that'd	6000
+how're	5000
+don	40000
+won	80000
+haven	3000
+ma	12000
+ll	0
+ve	0
+re	9000
+nt	0
+wo	0
+ca	0
+didn	0
+doesn	0
+isn	0
+wasn	0
+wouldn	0
+couldn	0
+aren	0
+ain	0
+shouldn	0
+weren	0
+hasn	0
+hadn	0
+mustn	0
+needn	0
+shan	0
+mightn	0
+dont	0
+im	0
+cant	0
+wont	0
+thats	0
+whats	0
+ive	0
+theres	0
+theyre	0
+youll	0
+youve	0
+youre	0
+weve	0
+wheres	0
+youd	0
+heres	0
+hes	0
+shes	0
+whos	0
+hows	0
+iam	0
+itis	0
+isnt	0
+didnt	0
+doesnt	0
+wasnt	0
+arent	0
+couldnt	0
+wouldnt	0
+shouldnt	0
+havent	0
+hasnt	0
+werent	0
+aint	0
+teh	0
+hte	0
+adn	0
+thr	0
+recieve	0
+definately	0
+seperate	0
+alot	0
+untill	0
+wich	0
+thier	0
+I
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+Sunday
+January
+February
+April
+June
+July
+August
+September
+October
+November
+December
+Christmas
+Easter
+Halloween
+Thanksgiving
+Hanukkah
+Ramadan
+America
+American
+Americans
+Africa
+African
+Asia
+Asian
+Europe
+European
+Australia
+Australian
+Canada
+Canadian
+Mexico
+Mexican
+Brazil
+Brazilian
+England
+English
+Britain
+British
+Scotland
+Scottish
+Ireland
+Irish
+Wales
+Welsh
+France
+French
+Germany
+German
+Germans
+Spain
+Spanish
+Italy
+Italian
+Italians
+Russia
+Russian
+Russians
+Japan
+Japanese
+India
+Indian
+Korea
+Korean
+Vietnam
+Vietnamese
+Egypt
+Egyptian
+Israel
+Israeli
+Iraq
+Iran
+Greece
+Greek
+Sweden
+Swedish
+Norway
+Denmark
+Danish
+Finland
+Holland
+Dutch
+Belgium
+Switzerland
+Swiss
+Austria
+Portugal
+Portuguese
+Poland
+Ukraine
+Cuba
+Cuban
+Argentina
+Colombia
+Peru
+Chile
+Thailand
+Singapore
+Pakistan
+Afghanistan
+Syria
+Lebanon
+Arabia
+Arab
+Arabic
+Chinese
+Latin
+Hebrew
+London
+Paris
+Berlin
+Rome
+Madrid
+Moscow
+Tokyo
+Beijing
+Dublin
+Amsterdam
+Vienna
+Athens
+Cairo
+Jerusalem
+Baghdad
+Havana
+Sydney
+Toronto
+Vancouver
+Montreal
+Washington
+Chicago
+Boston
+Miami
+Texas
+California
+Florida
+Hollywood
+Manhattan
+Brooklyn
+Vegas
+Seattle
+Detroit
+Dallas
+Houston
+Atlanta
+Denver
+Philadelphia
+Ohio
+Alaska
+Hawaii
+Arizona
+Nevada
+Oregon
+Michigan
+Virginia
+Kansas
+Iowa
+Utah
+Colorado
+Kentucky
+Tennessee
+Alabama
+Louisiana
+Minnesota
+Wisconsin
+Illinois
+Indiana
+Massachusetts
+Pennsylvania
+Connecticut
+Atlantic
+Pacific
+Mediterranean
+Mars
+Jupiter
+Jesus
+Christ
+Christian
+Christians
+Catholic
+Catholics
+Jewish
+Jews
+Muslim
+Muslims
+Islam
+Buddha
+Buddhist
+Bible
+Satan
+Allah
+Google
+Facebook
+Twitter
+Instagram
+YouTube
+Netflix
+Amazon
+Microsoft
+iPhone
+iPad
+FBI
+CIA
+USA
+UK
+NYC
+NASA
+TV
+DNA
+CEO
+DVD
+CD
+PC
+GPS
+ATM
+VIP
+FYI
+ASAP
+Mr
+Mrs
+Ms
+Dr
+John
+Michael
+David
+James
+Robert
+William
+Richard
+Thomas
+Charles
+Joseph
+Daniel
+Paul
+George
+Peter
+Kevin
+Brian
+Steven
+Edward
+Ronald
+Anthony
+Andrew
+Joshua
+Kenneth
+Matthew
+Timothy
+Jason
+Jeffrey
+Ryan
+Jacob
+Gary
+Nicholas
+Eric
+Jonathan
+Stephen
+Larry
+Justin
+Scott
+Brandon
+Benjamin
+Samuel
+Gregory
+Alexander
+Patrick
+Jack
+Dennis
+Jerry
+Tyler
+Aaron
+Henry
+Adam
+Douglas
+Nathan
+Zachary
+Kyle
+Walter
+Harold
+Jeremy
+Ethan
+Carl
+Keith
+Arthur
+Terry
+Sean
+Lawrence
+Jesse
+Dylan
+Bryan
+Jordan
+Billy
+Bruce
+Albert
+Willie
+Gabriel
+Logan
+Alan
+Juan
+Wayne
+Roy
+Ralph
+Eugene
+Louis
+Philip
+Bobby
+Johnny
+Harry
+Charlie
+Tommy
+Jimmy
+Danny
+Eddie
+Freddie
+Mike
+Dave
+Steve
+Tom
+Jim
+Joe
+Bob
+Tony
+Andy
+Sam
+Ben
+Leo
+Luke
+Simon
+Oliver
+Oscar
+Hugo
+Felix
+Mary
+Patricia
+Jennifer
+Linda
+Elizabeth
+Barbara
+Susan
+Jessica
+Sarah
+Karen
+Nancy
+Lisa
+Betty
+Margaret
+Sandra
+Ashley
+Kimberly
+Emily
+Donna
+Michelle
+Dorothy
+Carol
+Amanda
+Melissa
+Deborah
+Stephanie
+Rebecca
+Sharon
+Laura
+Cynthia
+Kathleen
+Amy
+Shirley
+Angela
+Helen
+Anna
+Brenda
+Pamela
+Nicole
+Emma
+Samantha
+Katherine
+Christine
+Debra
+Rachel
+Catherine
+Carolyn
+Janet
+Ruth
+Maria
+Heather
+Diane
+Julie
+Joyce
+Victoria
+Olivia
+Kelly
+Christina
+Lauren
+Joan
+Evelyn
+Judith
+Megan
+Cheryl
+Andrea
+Hannah
+Martha
+Jacqueline
+Frances
+Gloria
+Teresa
+Kathryn
+Sara
+Janice
+Julia
+Marie
+Madison
+Sophia
+Abigail
+Alice
+Judy
+Isabella
+Charlotte
+Marilyn
+Danielle
+Beverly
+Theresa
+Sophie
+Natalie
+Diana
+Brittany
+Kayla
+Alexis
+Lori
+Jenny
+Annie
+Katie
+Maggie
+Molly
+Lucy
+Sally
+Susie
+Kate
+Jane
+Anne
+Ann
+Claire
+Chloe
+Zoe
+Mia
+Ella
+Tina
+Nina
+# Common texting, technology and brand words that the subtitle list lacks or counts too low.
+lol	2000
+lmao	2000
+lmfao	2000
+rofl	2000
+omg	2000
+omfg	2000
+wtf	2000
+wth	2000
+idk	2000
+idc	2000
+idgaf	2000
+btw	2000
+imo	2000
+imho	2000
+tbh	2000
+brb	2000
+ttyl	2000
+smh	2000
+ngl	2000
+irl	2000
+dm	2000
+dms	2000
+rn	2000
+af	2000
+tho	2000
+thx	2000
+pls	2000
+plz	2000
+tysm	2000
+yw	2000
+np	2000
+jk	2000
+gg	2000
+gn	2000
+gm	2000
+hbu	2000
+wbu	2000
+wyd	2000
+ily	2000
+ilysm	2000
+tmrw	2000
+tmr	2000
+ur	2000
+kk	2000
+meh	2000
+hahaha	2000
+hehe	2000
+bruh	2000
+fam	2000
+omw	2000
+fr	2000
+ikr	2000
+nvm	2000
+ofc	2000
+obv	2000
+obvi	2000
+prob	2000
+probs	2000
+def	2000
+totes	2000
+lowkey	2000
+highkey	2000
+vibes	2000
+vibing	2000
+cringe	2000
+sus	2000
+yeet	2000
+bae	2000
+fomo	2000
+yolo	2000
+simp	2000
+ghosted	2000
+selfie	2000
+selfies	2000
+emoji	2000
+emojis	2000
+hashtag	2000
+meme	2000
+memes	2000
+gif	2000
+gifs	2000
+apps	2000
+wifi	2000
+offline	2000
+login	2000
+logout	2000
+signup	2000
+username	2000
+webpage	2000
+podcast	2000
+podcasts	2000
+vlog	2000
+livestream	2000
+streaming	2000
+upload	2000
+uploaded	2000
+screenshot	2000
+screenshots	2000
+smartphone	2000
+desktop	2000
+bluetooth	2000
+hotspot	2000
+router	2000
+modem	2000
+browser	2000
+inbox	2000
+spam	2000
+unsubscribe	2000
+subscribe	2000
+notification	2000
+notifications	2000
+api	2000
+apis	2000
+sdk	2000
+url	2000
+urls	2000
+html	2000
+css	2000
+json	2000
+xml	2000
+sql	2000
+http	2000
+https	2000
+usb	2000
+hdmi	2000
+pdf	2000
+jpg	2000
+png	2000
+cpu	2000
+gpu	2000
+ssd	2000
+ios	2000
+macos	2000
+linux	2000
+ubuntu	2000
+github	2000
+gitlab	2000
+repo	2000
+repos	2000
+commits	2000
+backend	2000
+frontend	2000
+fullstack	2000
+devops	2000
+kubernetes	2000
+docker	2000
+python	2000
+javascript	2000
+typescript	2000
+java	2000
+golang	2000
+nodejs	2000
+npm	2000
+regex	2000
+localhost	2000
+servers	2000
+databases	2000
+startup	2000
+saas	2000
+crypto	2000
+bitcoin	2000
+ethereum	2000
+blockchain	2000
+nft	2000
+llm	2000
+chatbot	2000
+chatgpt	2000
+nba	2000
+nfl	2000
+nhl	2000
+mlb	2000
+ufc	2000
+fifa	2000
+espn	2000
+nascar	2000
+diy	2000
+faq	2000
+rsvp	2000
+tba	2000
+tbd	2000
+cfo	2000
+cto	2000
+vp	2000
+hr	2000
+qa	2000
+ui	2000
+ux	2000
+roi	2000
+kpi	2000
+b2b	2000
+eod	2000
+eow	2000
+wfh	2000
+pto	2000
+covid	2000
+vaccinated	2000
+uber	2000
+lyft	2000
+venmo	2000
+paypal	2000
+spotify	2000
+tiktok	2000
+snapchat	2000
+whatsapp	2000
+hulu	2000
+reddit	2000
+linkedin	2000
+pinterest	2000
+airbnb	2000
+doordash	2000
+instacart	2000
+costco	2000
+walmart	2000
+starbucks	2000
+ikea	2000
+lemme	2000
+coz	2000
+yall	2000
+imma	2000
+tryna	2000
+finna	2000
+betcha	2000

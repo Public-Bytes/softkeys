@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.8**.
+SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.9**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.8.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.9.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -38,17 +38,22 @@ The release uses the same signing certificate as the previous signed SoftKeys do
 
 | Feature | How to use it |
 | --- | --- |
-| Autocorrect | Type a word and enter a space or punctuation. Press Backspace immediately after a correction to restore the original spelling. |
-| Glide typing | Slide through the letters of a word and lift to insert it. Tap a suggestion to choose another match. The trail is warm white. |
+| Autocorrect | Type a word and enter a space or punctuation. The highlighted middle suggestion shows the word that will be inserted. Tap your own spelling, shown in quotes on the left, to keep it. Press Backspace immediately after a correction to restore the original spelling. |
+| Glide typing | Slide through the letters of a word and lift to insert it. Tap a suggestion to choose another match. Press Backspace right after a glide to remove the whole word. The trail is warm white. |
+| Numbers and symbols | Tap 123, type, and enter a space to return to the letters. An apostrophe also returns to the letters. To type one symbol, hold 123, slide to the symbol, and lift. |
 | Cursor control | Hold Space, then drag left or right. Drag up or down to move between lines in multiline editors. |
 | Accents | Hold a letter, then choose a variant. |
 | Capitals | Tap Shift for uppercase. Double-tap or hold Shift for Caps Lock. |
-| Repeated deletion | Hold Backspace. |
+| Repeated deletion | Hold Backspace. It removes characters first and then whole words. |
 | Clipboard suggestion | Tap the Paste chip above the keys to insert recently copied text. Tap its close button to dismiss it. |
 | Emoji | Open the emoji picker for categories, search, and recent selections. Swipe to change pages. Hold an emoji with a dot below it for variants. |
 | Dictation | Tap the microphone to speak while SoftKeys stays visible. Tap Stop or the microphone again to finish, or Cancel to discard the request. |
 
-Autocorrect, suggestions, and glide decoding use a bundled English dictionary. Recognized words, acronyms, and mixed case text are preserved. URL and path syntax stays literal, while ordinary search words can be corrected.
+Autocorrect, suggestions, and glide decoding use a bundled English dictionary with contractions, common names, and common texting and technology words. Autocorrect uses where each tap landed, so a tap near the edge of a key can be read as the neighboring letter. Recognized words, acronyms, and mixed case text are preserved. Short words that the dictionary does not hold are changed only when the evidence is strong. URL and path syntax stays literal, while ordinary search words can be corrected.
+
+SoftKeys stops correcting a word after you keep your own spelling. Restoring a spelling with Backspace keeps that word until the keyboard restarts. Restoring it a second time, or tapping your spelling in the suggestions, saves the word on the phone. Saved words also appear in suggestions and glide results.
+
+A glide or a chosen suggestion adds a space after the word. A punctuation mark typed next replaces that space, and a glide after punctuation starts with a space.
 
 Glide entry and suggestions remain available in email fields and recognized terminal editors. Automatic word replacement stays off in those fields. Password fields keep predictions disabled. Recognized terminal command fields marked as visible passwords have a specific exception unless their hints identify a password or secret.
 
@@ -64,7 +69,7 @@ On Android 13 and later, SoftKeys supplies a continuous audio stream to provider
 
 ## Settings
 
-Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups.
+Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
 
 Open **Keypress vibration** to choose a duration from 1 to 100 ms using a slider or an exact number, including 2 ms. Moving the slider previews the vibration when Haptic feedback is on. Save keeps the value, Cancel preserves the previous value, and Default selects the existing 12 ms default. Hold feedback adjusts with the chosen duration.
 
@@ -86,7 +91,7 @@ Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25
 
 ## Privacy and permissions
 
-SoftKeys does not save typed text or send it over the network. Keyboard settings and recent emoji selections are saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
+SoftKeys does not send typed text over the network, and it does not save what you type. The exception is the list of learned words, which holds single words that you chose to keep after a correction. The list is saved on the phone, never includes text from password fields, and can be cleared with Reset learned words. Keyboard settings and recent emoji selections are also saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
 
 The app requests Android's normal `VIBRATE` permission for haptic feedback and optional `RECORD_AUDIO` permission for dictation. It has no network, contacts, or storage permissions. Dictation sends microphone audio to the phone's speech recognition service, which may send it to its provider. SoftKeys does not save microphone audio or transcripts to files.
 
@@ -106,14 +111,14 @@ See [Development](docs/development.md) for the source layout, the sample editor,
 
 ## Current limits
 
-Glide decoding is an initial implementation and can misread gestures. Cursor control depends on the editor's handling of Android arrow keys. Custom editors can behave differently from standard Android text fields.
+Glide decoding and autocorrect judge each word alone. They do not use the words before it, so words with the same or nearly the same path, such as "to" and "too" or "has" and "had", are chosen by how common they are. On recorded swipes from the public How We Swipe dataset, the first choice matched the intended word in about 84 of 100 swipes, and the intended word was among the three choices in about 92 of 100. Cursor control depends on the editor's handling of Android arrow keys. Custom editors can behave differently from standard Android text fields.
 
 Emoji use the device's Android font, so artwork and available characters depend on Android. Apple emoji artwork is not included. Haptic feedback depends on physical device hardware and system restrictions.
 
-The 1.8 release build, signature, alignment, and downloads were checked. Manual emulator review covered an ongoing microphone session through more than a minute of silence, explicit Stop, Cancel, and field changes. The emulator has no audio input, so spoken transcription accuracy was not verified. Physical vibration and Chrome/Terminus behavior on the user's device remain unverified. No automated tests were added or run for 1.8.
+For 1.9, the dictionary engine was measured with `bench/TypingBench.java` on simulated taps and on recorded human swipes. An emulator review on a narrow phone layout covered autocorrect, restoring a spelling, the return to letters after numbers and punctuation, sliding from 123, glide spacing and capitalization, margin taps, and held Backspace. Wide layouts, physical devices, Chrome, and Terminus were not reviewed for 1.9.
 
 ## Data and licenses
 
-The English dictionary is derived from Hermit Dave's [FrequencyWords English 2018 list](https://github.com/hermitdave/FrequencyWords), based on OpenSubtitles 2018. It retains lowercase ASCII words and contractions up to 26 characters, with tab-separated counts. The modified dictionary is distributed under [CC BY-SA 4.0](app/src/main/assets/licenses/CC-BY-SA-4.0.txt).
+The English dictionary is derived from Hermit Dave's [FrequencyWords English 2018 list](https://github.com/hermitdave/FrequencyWords), based on OpenSubtitles 2018. It retains lowercase ASCII words and contractions up to 26 characters, with tab-separated counts. The modified dictionary is distributed under [CC BY-SA 4.0](app/src/main/assets/licenses/CC-BY-SA-4.0.txt). The source list splits contractions at the apostrophe, so `lexicon.tsv` adds contractions with estimated counts, capital letters for common names, and common texting and technology words. It also removes the leftover fragments and some misspellings. `lexicon.tsv` was written for SoftKeys.
 
 Emoji names and sequences come from [Unicode Emoji 16.0](https://www.unicode.org/Public/emoji/16.0/emoji-test.txt), under the [Unicode License v3](app/src/main/assets/licenses/Unicode-3.0.txt). Attribution and notices are bundled in [NOTICE.txt](app/src/main/assets/licenses/NOTICE.txt) and are available in the app's license screen.

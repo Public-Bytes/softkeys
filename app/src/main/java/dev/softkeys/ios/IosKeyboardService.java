@@ -45,13 +45,23 @@ public class IosKeyboardService extends InputMethodService {
     private final ClipboardManager.OnPrimaryClipChangedListener clipboardListener=()->handler.post(()->{if(isInputViewShown())readClipboardSuggestion();});
     private final SharedPreferences.OnSharedPreferenceChangeListener clipboardPreferenceListener=(settings,key)->{
         if("clipboardSuggestions".equals(key)){if(isInputViewShown())readClipboardSuggestion();else clearClipboardSuggestion();}
+        if("learnedWords".equals(key))reloadLearnedWords();
     };
     private String[] suggestions={"I","the","I'm"};
     private String correctionOriginal,correctionReplacement;
     private int correctionCaret=-1,glideLength;
     private boolean decodingGlide;
     private final ArrayDeque<Runnable> pendingActions=new ArrayDeque<>();
-    private String correctionPrefix="",cachedCorrection="";
+    private String correctionPrefix="",cachedCorrection;
+    private boolean correctionPending;
+    // Touch positions of the letters in the word being typed. The dictionary uses them to judge near misses.
+    private final StringBuilder tapLetters=new StringBuilder();
+    private final ArrayList<Float> tapPoints=new ArrayList<>();
+    private EnglishDictionary.Layout letterLayout;
+    // The caret position right after a space that SoftKeys added after a glide or a chosen suggestion.
+    private int autoSpaceCaret=-1;
+    private final LinkedHashSet<String> learnedWords=new LinkedHashSet<>();
+    private final Set<String> sessionWords=new HashSet<>();
     private final Runnable readContext=this::readContextAsync;
     private final Runnable suggestTask=this::computeSuggestions;
 
@@ -61,9 +71,12 @@ public class IosKeyboardService extends InputMethodService {
         vibrator=Build.VERSION.SDK_INT>=31?getSystemService(VibratorManager.class).getDefaultVibrator():(Vibrator)getSystemService(VIBRATOR_SERVICE);
         clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
         if(clipboard!=null)clipboard.addPrimaryClipChangedListener(clipboardListener);
+        learnedWords.addAll(KeyboardPreferences.learnedWords(prefs));
         prefs.registerOnSharedPreferenceChangeListener(clipboardPreferenceListener);
         worker.execute(()->{
-            try{dictionary=new EnglishDictionary(this);}catch(java.io.IOException ignored){}
+            try(java.io.InputStream words=getAssets().open("english.tsv");java.io.InputStream additions=getAssets().open("lexicon.tsv")){
+                EnglishDictionary loaded=new EnglishDictionary(words,additions);loaded.setUserWords(KeyboardPreferences.learnedWords(prefs));dictionary=loaded;
+            }catch(java.io.IOException ignored){}
             try{emojiCatalog=new EmojiCatalog(this);}catch(java.io.IOException ignored){}
             handler.post(()->{refreshSuggestions();if(emoji)rebuild();});
         });
@@ -82,7 +95,7 @@ public class IosKeyboardService extends InputMethodService {
         if(restarting&&same){scheduleContextRead();return;}
         cancelDictation();
         activeInput=true;editorPackage=info.packageName;fieldId=info.fieldId;inputType=info.inputType;
-        revision++;decodingGlide=false;pendingActions.clear();acknowledgements.clear();before.setLength(0);clearCorrection();glideLength=0;
+        revision++;decodingGlide=false;pendingActions.clear();acknowledgements.clear();before.setLength(0);clearCorrection();glideLength=0;autoSpaceCaret=-1;tapLetters.setLength(0);tapPoints.clear();
         caret=Math.max(0,Math.min(info.initialSelStart,info.initialSelEnd));selectionLength=Math.abs(info.initialSelEnd-info.initialSelStart);
         int cls=info.inputType&InputType.TYPE_MASK_CLASS,variation=info.inputType&InputType.TYPE_MASK_VARIATION;
         numeric=cls==InputType.TYPE_CLASS_NUMBER||cls==InputType.TYPE_CLASS_PHONE||cls==InputType.TYPE_CLASS_DATETIME;
@@ -196,9 +209,48 @@ public class IosKeyboardService extends InputMethodService {
         if(before.length()>256)before.delete(0,before.length()-256);scheduleContextRead();updateShift();refreshSuggestions();
     }
     private void clearCorrection(){correctionOriginal=correctionReplacement=null;correctionCaret=-1;}
-    private void commit(String text){InputConnection ic=getCurrentInputConnection();if(ic==null)return;clearCorrection();glideLength=0;ic.commitText(text,1);before.append(text);caret+=text.length();noteEdit();}
+    private boolean autoSpaced(){return autoSpaceCaret>=0&&caret==autoSpaceCaret&&selectionLength==0&&before.length()>0&&before.charAt(before.length()-1)==' ';}
+    /** A space is needed before a word that follows a letter, a digit or closing punctuation. */
+    private String leadSpace(){
+        if(before.length()==0)return "";
+        char c=before.charAt(before.length()-1);
+        if(Character.isLetterOrDigit(c))return " ";
+        return !emailField&&!uriField&&!terminalEditor&&".,!?;:)]}".indexOf(c)>=0?" ":"";
+    }
+    private float[] tapsFor(String word){
+        String plain=EnglishDictionary.letters(word);
+        if(plain.isEmpty()||!plain.contentEquals(tapLetters)||tapPoints.size()!=plain.length()*2)return null;
+        float[] taps=new float[tapPoints.size()];for(int i=0;i<taps.length;i++)taps[i]=tapPoints.get(i);return taps;
+    }
+    private void reloadLearnedWords(){
+        Set<String> saved=KeyboardPreferences.learnedWords(prefs);if(saved.equals(learnedWords))return;
+        learnedWords.clear();learnedWords.addAll(saved);if(saved.isEmpty())sessionWords.clear();applyUserWords();
+    }
+    private void applyUserWords(){
+        EnglishDictionary dict=dictionary;if(dict==null)return;
+        List<String> words=new ArrayList<>(learnedWords);words.addAll(sessionWords);dict.setUserWords(words);correctionPrefix="";
+    }
+    /**
+     * Stops correcting a spelling the user restored or chose. The first restore lasts until the keyboard
+     * restarts. A second restore, or choosing the typed text in the strip, saves the word.
+     */
+    private void keepWord(String word,boolean save){
+        EnglishDictionary dict=dictionary;
+        if(dict==null||privateField||word.length()<2||word.length()>26||dict.contains(word))return;
+        for(int i=0;i<word.length();i++){char c=word.charAt(i);if(!Character.isLetter(c)&&c!='\'')return;}
+        String stored=word.substring(1).equals(word.substring(1).toLowerCase(Locale.US))?word.toLowerCase(Locale.US):word;
+        if(save||!sessionWords.add(stored)){
+            sessionWords.remove(stored);
+            if(learnedWords.add(stored)){
+                while(learnedWords.size()>2000){Iterator<String> oldest=learnedWords.iterator();oldest.next();oldest.remove();}
+                prefs.edit().putStringSet("learnedWords",new HashSet<>(learnedWords)).apply();
+            }
+        }
+        applyUserWords();
+    }
+    private void commit(String text){InputConnection ic=getCurrentInputConnection();if(ic==null)return;clearCorrection();glideLength=0;autoSpaceCaret=-1;ic.commitText(text,1);before.append(text);caret+=text.length();noteEdit();}
     private void replaceTail(int count,String text){
-        InputConnection ic=getCurrentInputConnection();if(ic==null)return;count=Math.min(count,before.length());
+        InputConnection ic=getCurrentInputConnection();if(ic==null)return;count=Math.min(count,before.length());autoSpaceCaret=-1;
         ic.beginBatchEdit();
         if(count>0){
             if(rawEditor){for(int i=0;i<count;i++)sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);}
@@ -212,9 +264,13 @@ public class IosKeyboardService extends InputMethodService {
         if(emojiSearching){if(!emojiQuery.isEmpty())emojiQuery=emojiQuery.substring(0,emojiQuery.offsetByCodePoints(emojiQuery.length(),-1));keyboard.invalidateHeader();return;}
         InputConnection ic=getCurrentInputConnection();if(ic==null)return;
         if(correctionOriginal!=null&&caret==correctionCaret&&before.toString().endsWith(correctionReplacement)){
-            String original=correctionOriginal;int count=correctionReplacement.length();clearCorrection();replaceTail(count,original);return;
+            String original=correctionOriginal;int count=correctionReplacement.length();clearCorrection();
+            String word=original;while(!word.isEmpty()&&!Character.isLetter(word.charAt(word.length()-1)))word=word.substring(0,word.length()-1);
+            keepWord(word,false);replaceTail(count,original);return;
         }
-        clearCorrection();glideLength=0;lastSpace=0;
+        // Backspace right after a glide removes the whole word, because the glide inserted it in one step.
+        if(glideLength>0&&autoSpaced()&&before.length()>=glideLength){int count=glideLength;clearCorrection();glideLength=0;lastSpace=0;replaceTail(count,"");return;}
+        clearCorrection();glideLength=0;lastSpace=0;autoSpaceCaret=-1;
         if(selectionLength>0){sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);noteEdit();return;}
         int count=1;
         if(before.length()>0){graphemes.setText(before.toString());int start=Math.max(0,graphemes.preceding(before.length()));count=before.length()-start;before.delete(start,before.length());}
@@ -222,25 +278,55 @@ public class IosKeyboardService extends InputMethodService {
         // Multi-code-unit clusters use an atomic surrounding-text delete when available.
         if(!rawEditor&&count>1){if(!ic.deleteSurroundingText(count,0))sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);}
         else sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
-        caret=Math.max(0,caret-count);noteEdit();
+        caret=Math.max(0,caret-count);
+        String plain=EnglishDictionary.letters(prefix());
+        if(plain.length()<tapLetters.length()&&tapLetters.toString().startsWith(plain)){tapLetters.setLength(plain.length());while(tapPoints.size()>plain.length()*2)tapPoints.remove(tapPoints.size()-1);}
+        noteEdit();
     }
+    /** Removes the word before the cursor. Held Backspace switches to this after a run of single characters. */
+    private void eraseWord(){
+        InputConnection ic=getCurrentInputConnection();
+        if(ic==null||decodingGlide||emojiSearching||rawEditor||selectionLength>0||before.length()==0){erase();return;}
+        int i=before.length();
+        while(i>0&&Character.isWhitespace(before.charAt(i-1)))i--;
+        while(i>0&&!Character.isWhitespace(before.charAt(i-1)))i--;
+        int count=before.length()-i;
+        if(count<=1||!ic.deleteSurroundingText(count,0)){erase();return;}
+        clearCorrection();glideLength=0;lastSpace=0;autoSpaceCaret=-1;
+        before.delete(i,before.length());caret=Math.max(0,caret-count);noteEdit();
+    }
+    private void typeLetter(String text,float x,float y){
+        cancelDictation();
+        if(decodingGlide){pendingActions.add(()->typeLetter(text,x,y));return;}
+        lastShift=lastSpace=0;
+        if(emojiSearching){emojiQuery+=text.toLowerCase(Locale.US);keyboard.invalidateHeader();return;}
+        if(prefix().isEmpty()){tapLetters.setLength(0);tapPoints.clear();}
+        tapLetters.append(text.toLowerCase(Locale.US));tapPoints.add(x);tapPoints.add(y);
+        commit(text);
+    }
+    private void showLetters(){if(symbols&&!numeric){symbols=second=false;rebuild();}}
     private void updateShift(){
         boolean previous=shift;if(caps)shift=true;else if(!manualShift){
-            boolean next=false;
-            if(emojiSearching)next=false;
-            else if(prefs.getBoolean("autocaps",true)&&!privateField&&!numeric&&!terminalEditor){
-                if((inputType&InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)!=0)next=true;
-                else if((inputType&InputType.TYPE_TEXT_FLAG_CAP_WORDS)!=0)next=before.length()==0||Character.isWhitespace(before.charAt(before.length()-1));
-                else if((inputType&InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)!=0){int i=before.length()-1;if(i<0||before.charAt(i)=='\n')next=true;else if(Character.isWhitespace(before.charAt(i))){while(i>=0&&Character.isWhitespace(before.charAt(i))){if(before.charAt(i)=='\n'){next=true;break;}i--;}next|=i<0||".!?".indexOf(before.charAt(i))>=0;}}
-            }
-            shift=next;
+            shift=autoShift(before);
         }
         if(previous!=shift&&keyboard!=null)keyboard.invalidateLetters();
+    }
+    /** True when the editor asks for a capital letter after this text and automatic capitalization is on. */
+    private boolean autoShift(CharSequence text){
+        if(emojiSearching||!prefs.getBoolean("autocaps",true)||privateField||numeric||terminalEditor)return false;
+        if((inputType&InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)!=0)return true;
+        if((inputType&InputType.TYPE_TEXT_FLAG_CAP_WORDS)!=0)return text.length()==0||Character.isWhitespace(text.charAt(text.length()-1));
+        if((inputType&InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)==0)return false;
+        int i=text.length()-1;
+        if(i<0||text.charAt(i)=='\n')return true;
+        if(!Character.isWhitespace(text.charAt(i)))return false;
+        while(i>=0&&Character.isWhitespace(text.charAt(i))){if(text.charAt(i)=='\n')return true;i--;}
+        return i<0||".!?".indexOf(text.charAt(i))>=0;
     }
     private String prefix(){if(privateField||selectionLength>0)return "";int i=before.length();while(i>0&&(Character.isLetter(before.charAt(i-1))||before.charAt(i-1)=='\''))i--;return before.substring(i);}
     private void refreshSuggestions(){
         if(glideLength>0)return;
-        handler.removeCallbacks(suggestTask);
+        handler.removeCallbacks(suggestTask);correctionPending=false;
         if(!allowPredictions){suggestions=new String[0];if(keyboard!=null)keyboard.invalidateHeader();return;}
         String p=prefix();
         if(p.isEmpty())suggestions=new String[]{"I",shift?"The":"the","I'm"};
@@ -249,8 +335,17 @@ public class IosKeyboardService extends InputMethodService {
     }
     private void computeSuggestions(){
         EnglishDictionary dict=dictionary;if(dict==null||!allowPredictions||emojiSearching||glideLength>0)return;
-        String p=prefix();long token=revision;
-        worker.execute(()->{if(token!=revision)return;List<String> result=dict.suggest(p);String correction=dict.correct(p);handler.post(()->{if(token!=revision||!activeInput||glideLength>0)return;correctionPrefix=p;cachedCorrection=correction;suggestions=result.toArray(new String[0]);keyboard.invalidateHeader();});});
+        String p=prefix();long token=revision;float[] taps=tapsFor(p);EnglishDictionary.Layout layout=letterLayout;
+        worker.execute(()->{
+            if(token!=revision)return;
+            EnglishDictionary.Analysis analysis=dict.analyze(p,taps,layout);
+            handler.post(()->{
+                if(token!=revision||!activeInput||glideLength>0)return;
+                correctionPrefix=p;cachedCorrection=analysis.correction;suggestions=analysis.suggestions;
+                correctionPending=analysis.correction!=null&&selectionLength==0&&prefs.getBoolean("autocorrect",true)&&canAutoCorrect(" ");
+                if(keyboard!=null)keyboard.invalidateHeader();
+            });
+        });
     }
     private void chooseSuggestion(int i){
         if(dictation!=null){if(i==1)stopDictation();else if(i==2)cancelDictation();return;}
@@ -260,7 +355,10 @@ public class IosKeyboardService extends InputMethodService {
             if(i==0){String text=clipboardText;dismissClipboardSuggestion();commit(text);}return;
         }
         if(i>=suggestions.length||suggestions[i].isEmpty())return;String selected=suggestions[i];int count=glideLength>0?glideLength:prefix().length();
-        clearCorrection();glideLength=0;replaceTail(count,selected+" ");
+        // Choosing the typed text over a pending correction teaches the keyboard that spelling.
+        if(i==0&&glideLength==0&&correctionPending)keepWord(selected,true);
+        String lead=count==0?leadSpace():"";
+        clearCorrection();glideLength=0;replaceTail(count,lead+selected+" ");autoSpaceCaret=caret;
     }
     private boolean canAutoCorrect(String delimiter){
         if(!allowPredictions||emailField||terminalEditor)return false;
@@ -289,25 +387,28 @@ public class IosKeyboardService extends InputMethodService {
         // A fast typist can reach a word boundary before its suggestions finish.
         // Buffer later key presses while the same offline worker resolves that word.
         long token=revision;decodingGlide=true;handler.removeCallbacks(readContext);EnglishDictionary dict=dictionary;
-        worker.execute(()->{String fixed=dict.correct(p);handler.post(()->{if(token!=revision||!activeInput)return;decodingGlide=false;applyCorrection(p,fixed,delimiter);drainPendingActions();});});
+        float[] taps=tapsFor(p);EnglishDictionary.Layout layout=letterLayout;
+        worker.execute(()->{String fixed=dict.analyze(p,taps,layout).correction;handler.post(()->{if(token!=revision||!activeInput)return;decodingGlide=false;applyCorrection(p,fixed,delimiter);drainPendingActions();});});
     }
     private void applyCorrection(String p,String fixed,String delimiter){
-        if(!fixed.equals(p)){clearCorrection();glideLength=0;replaceTail(p.length(),fixed+delimiter);correctionOriginal=p;correctionReplacement=fixed+delimiter;correctionCaret=caret;}
+        if(fixed!=null&&!fixed.equals(p)){clearCorrection();glideLength=0;replaceTail(p.length(),fixed+delimiter);correctionOriginal=p;correctionReplacement=fixed+delimiter;correctionCaret=caret;}
         else commit(delimiter);
     }
-    private void finishGlide(float[] path,Map<Character,float[]> centers,float keyWidth,boolean upper){
+    private void finishGlide(float[] path,EnglishDictionary.Layout layout,boolean upper){
         cancelDictation();
         dismissClipboardSuggestion();
-        if(decodingGlide){pendingActions.add(()->finishGlide(path,centers,keyWidth,upper));return;}
+        if(decodingGlide){pendingActions.add(()->finishGlide(path,layout,upper));return;}
         EnglishDictionary dict=dictionary;if(dict==null)return;long token=revision;decodingGlide=true;handler.removeCallbacks(readContext);
-        worker.execute(()->{List<String> result=dict.glide(path,centers,keyWidth);handler.post(()->{
+        worker.execute(()->{List<String> result=dict.glide(path,layout);handler.post(()->{
             if(token!=revision||!activeInput)return;
             decodingGlide=false;
             if(result.isEmpty()){drainPendingActions();return;}
-            String lead=before.length()>0&&Character.isLetterOrDigit(before.charAt(before.length()-1))?" ":"";
-            String first=upper?EnglishDictionary.matchCase(result.get(0),"A"):result.get(0);
-            commit(lead+first+" ");glideLength=first.length()+1;
-            suggestions=result.stream().map(w->upper?EnglishDictionary.matchCase(w,"A"):w).toArray(String[]::new);keyboard.invalidateHeader();drainPendingActions();
+            String lead=leadSpace();
+            // The space added before the word can start a new sentence, which needs a capital.
+            boolean capital=upper||!lead.isEmpty()&&!caps&&autoShift(before+lead);
+            String first=capital?EnglishDictionary.matchCase(result.get(0),"A"):result.get(0);
+            commit(lead+first+" ");glideLength=first.length()+1;autoSpaceCaret=caret;correctionPending=false;
+            suggestions=result.stream().map(w->capital?EnglishDictionary.matchCase(w,"A"):w).toArray(String[]::new);keyboard.invalidateHeader();drainPendingActions();
         });});
     }
     private void drainPendingActions(){while(!decodingGlide&&!pendingActions.isEmpty())pendingActions.removeFirst().run();}
@@ -324,8 +425,8 @@ public class IosKeyboardService extends InputMethodService {
         switch(value){
             case "shift":{long now=SystemClock.uptimeMillis();if(caps)caps=shift=false;else if(now-lastShift<350)caps=shift=true;else shift=!shift;lastShift=now;manualShift=true;keyboard.invalidateLetters();return;}
             case "delete":erase();return;
-            case "123":symbols=true;emoji=numeric=false;rebuild();return;
-            case "ABC":symbols=emoji=numeric=emojiSearching=false;emojiQuery="";rebuild();return;
+            case "123":symbols=true;second=emoji=numeric=false;rebuild();return;
+            case "ABC":symbols=second=emoji=numeric=emojiSearching=false;emojiQuery="";rebuild();return;
             case "more":second=!second;rebuild();return;
             case "voice":startVoiceInput();return;
             case "emoji":emoji=true;emojiSearching=false;emojiPage=0;emojiQuery="";symbols=numeric=false;rebuild();return;
@@ -337,9 +438,14 @@ public class IosKeyboardService extends InputMethodService {
             case "space":{
                 if(emojiSearching){emojiQuery+=" ";keyboard.invalidateHeader();return;}
                 long now=SystemClock.uptimeMillis();int n=before.length();
-                if(glideLength>0){glideLength=0;refreshSuggestions();lastSpace=now;return;}
-                if(prefs.getBoolean("doubleSpacePeriod",true)&&!privateField&&!terminalEditor&&!emailField&&!uriField&&now-lastSpace<350&&n>=2&&before.charAt(n-1)==' '&&Character.isLetterOrDigit(before.charAt(n-2))){clearCorrection();replaceTail(1,". ");lastSpace=0;}
-                else{boundary(" ");lastSpace=now;}return;
+                // A space after a symbol or a number returns to the letters, as on iOS.
+                boolean wasSymbols=symbols;
+                // The glide or the chosen suggestion already added this space.
+                if(autoSpaced()){autoSpaceCaret=-1;glideLength=0;refreshSuggestions();lastSpace=now;}
+                else if(prefs.getBoolean("doubleSpacePeriod",true)&&!privateField&&!terminalEditor&&!emailField&&!uriField&&now-lastSpace<700&&n>=2&&before.charAt(n-1)==' '&&(Character.isLetterOrDigit(before.charAt(n-2))||")]}\"'".indexOf(before.charAt(n-2))>=0)){clearCorrection();replaceTail(1,". ");lastSpace=0;}
+                else{boundary(" ");lastSpace=now;}
+                if(wasSymbols)showLetters();
+                return;
             }
             case "return":{
                 dismissClipboardSuggestion();
@@ -347,14 +453,21 @@ public class IosKeyboardService extends InputMethodService {
                 EditorInfo e=getCurrentInputEditorInfo();InputConnection ic=getCurrentInputConnection();if(ic==null)return;
                 int action=e==null?0:e.imeOptions&EditorInfo.IME_MASK_ACTION;
                 if(e!=null&&(e.imeOptions&EditorInfo.IME_FLAG_NO_ENTER_ACTION)==0&&action!=EditorInfo.IME_ACTION_NONE&&action!=EditorInfo.IME_ACTION_UNSPECIFIED){ic.performEditorAction(action);clearCorrection();glideLength=0;}
-                else if(rawEditor)sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER);else boundary("\n");return;
+                else if(rawEditor)sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER);else boundary("\n");
+                showLetters();return;
             }
             default:{
                 lastShift=lastSpace=0;
                 String text=!symbols&&!emoji&&shift?value.toUpperCase(Locale.US):value;
                 if(emojiSearching){emojiQuery+=text.toLowerCase(Locale.US);keyboard.invalidateHeader();return;}
-                if(!symbols&&".,!?;:".contains(text)&&text.length()==1){if(glideLength>0&&before.length()>0&&before.charAt(before.length()-1)==' '){glideLength=0;replaceTail(1,text);}else boundary(text);}
+                // Punctuation ends a word on every layout, so the word before it is corrected.
+                boolean ending=text.length()==1&&".,!?;:)]}\"".contains(text);
+                // Punctuation right after an added space replaces that space.
+                if(ending&&!text.equals("\"")&&autoSpaced()){glideLength=0;replaceTail(1,text);}
+                else if(ending)boundary(text);
                 else commit(text);
+                // An apostrophe is followed by letters, so return to them.
+                if(text.equals("'"))showLetters();
             }
         }
     }
@@ -489,6 +602,11 @@ public class IosKeyboardService extends InputMethodService {
                 }
                 row(new String[]{"emoji",symbols?"ABC":"123","space","voice","return"},3,contentLeft,contentWidth,wide?new float[]{.7f,1.5f,5.6f,.7f,1.5f}:new float[]{1.1f,2,3.8f,1.1f,2});
             }
+            if(!symbols&&!emoji&&!numeric&&!emojiSearching||letterLayout==null&&!numeric&&!emoji){
+                Map<Character,float[]> centers=new HashMap<>();
+                for(Key k:keys)if(letter(k))centers.put(k.value.charAt(0),new float[]{k.box.centerX(),k.box.centerY()});
+                if(!centers.isEmpty())letterLayout=new EnglishDictionary.Layout(centers,contentWidth/10,rowH);
+            }
             invalidate();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
         private String[] chars(String text){String[] a=new String[text.length()];for(int i=0;i<a.length;i++)a[i]=text.substring(i,i+1);return a;}
@@ -520,7 +638,7 @@ public class IosKeyboardService extends InputMethodService {
         private boolean letter(Key k){return k!=null&&k.value.length()==1&&k.value.charAt(0)>='a'&&k.value.charAt(0)<='z'&&!symbols&&!emoji&&!numeric;}
         private String label(Key k){
             if(cursorDragging())return "";
-            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(dictation!=null)return i==0?dictationStatus:i==1?dictationFinishing?"Finishing":"Stop":"Cancel";if(!dictationStatus.isEmpty())return i==0?dictationStatus:i==2?"Dismiss dictation message":"";if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i<suggestions.length?suggestions[i]:"";}
+            if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(dictation!=null)return i==0?dictationStatus:i==1?dictationFinishing?"Finishing":"Stop":"Cancel";if(!dictationStatus.isEmpty())return i==0?dictationStatus:i==2?"Dismiss dictation message":"";if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i>=suggestions.length?"":i==0&&correctionPending?"\""+suggestions[i]+"\"":suggestions[i];}
             if(k.value.startsWith("em:"))return k.value.substring(3);
             if(k.value.startsWith("cat:"))return EmojiCatalog.ICONS[Integer.parseInt(k.value.substring(4))];
             return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->dictation!=null?"Stop dictation":"Start dictation";case "return"->actionLabel();case "more"->second?"123":"#+=";case "emojinext"->"›";case "emojiprev"->"‹";case "emojisearch"->(emojiQuery.isEmpty()?EmojiCatalog.NAMES[emojiCategory]:"\""+emojiQuery+"\"")+"   "+(emojiPage+1)+"/"+emojiPages+"   ⌕";case "emojiquery"->emojiQuery.isEmpty()?"Search emoji":emojiQuery;case "emojidone"->"Search";default->!symbols&&!emoji&&shift?k.value.toUpperCase(Locale.US):k.value;};
@@ -555,6 +673,8 @@ public class IosKeyboardService extends InputMethodService {
                 }else{paint.setTextSize(dp(22));drawText(canvas,"×",rect.centerX(),rect.centerY());}return;
             }
             if(suggestion||k.box.top==0){
+                // The middle item is the word that the next space or punctuation mark will insert.
+                if(suggestion&&correctionPending&&k.value.equals("suggest:1")&&!label.isEmpty()){paint.setColor(pressed?blend(keyColor,foreground,.12f):keyColor);rect.set(k.box);rect.inset(dp(7),dp(5));canvas.drawRoundRect(rect,dp(9),dp(9),paint);paint.setColor(foreground);}
                 paint.setTextSize(dp(emoji?14:wide?14:15.5f));drawText(canvas,label,k.box.centerX(),k.box.centerY());
                 if(suggestion&&!k.value.equals("suggest:2")){paint.setColor(divider);canvas.drawRect(k.box.right-dp(.5f),dp(10),k.box.right+dp(.5f),suggestionH-dp(10),paint);}return;
             }
@@ -590,7 +710,26 @@ public class IosKeyboardService extends InputMethodService {
             }
             paint.setStyle(Paint.Style.FILL);c.restore();
         }
-        private Key hit(float x,float y){for(Key k:keys){if(!keyVisible(k))continue;keyBounds(k,rect);if(rect.contains(x,y))return k;}return null;}
+        private Key hit(float x,float y){
+            for(Key k:keys){if(!keyVisible(k))continue;keyBounds(k,rect);if(rect.contains(x,y))return k;}
+            // The side margins and the indented middle row have no key under them. Use the nearest key there.
+            if(y<suggestionH||emoji)return null;
+            Key best=null;float least=dp(40);
+            // Prefer a key in the touched row, so the edge beside A gives A and not Q.
+            for(Key k:keys){
+                if(k.box.top<suggestionH-1||y<k.box.top||y>=k.box.bottom)continue;
+                float distance=Math.max(k.box.left-x,x-k.box.right);
+                if(distance<least){least=distance;best=k;}
+            }
+            if(best!=null)return best;
+            least=dp(28);
+            for(Key k:keys){
+                if(k.box.top<suggestionH-1)continue;
+                float dx=Math.max(0,Math.max(k.box.left-x,x-k.box.right)),dy=Math.max(0,Math.max(k.box.top-y,y-k.box.bottom)),distance=(float)Math.hypot(dx,dy);
+                if(distance<least){least=distance;best=k;}
+            }
+            return best;
+        }
         private void showPreview(Touch touch,int pointer){
             handler.removeCallbacks(dismissPreview);
             Key key=touch.key;
@@ -630,10 +769,11 @@ public class IosKeyboardService extends InputMethodService {
             // context rather than guessing a UTF-16 cursor position from pixel motion.
             before.setLength(0);refreshSuggestions();handler.removeCallbacks(readContext);handler.post(readContext);invalidate();
         }
-        private void commitTouch(Touch t){if(t.committed||t.held)return;t.committed=true;if(letter(t.key))press("text:"+(t.upper?t.key.value.toUpperCase(Locale.US):t.key.value));else press(t.key.value);}
+        private void commitTouch(Touch t){if(t.committed||t.held)return;t.committed=true;if(letter(t.key))typeLetter(t.upper?t.key.value.toUpperCase(Locale.US):t.key.value,t.x,t.y);else press(t.key.value);}
         private void hold(Touch t,int id){
             String value=t.key.value;
-            if(value.equals("delete"))t.hold=new Runnable(){public void run(){if(touches.get(id)!=t)return;t.held=true;erase();handler.postDelayed(this,50);}};
+            // Held Backspace removes characters first, then whole words.
+            if(value.equals("delete"))t.hold=new Runnable(){int repeats;public void run(){if(touches.get(id)!=t)return;t.held=true;if(++repeats>16){eraseWord();handler.postDelayed(this,140);}else{erase();handler.postDelayed(this,50);}}};
             else if(value.equals("space"))t.hold=()->startCursorDrag(t,id);
             else if(value.equals("shift"))t.hold=()->{t.held=true;caps=shift=true;haptic(true);invalidateLetters();};
             else if(letter(t.key)&&!accents(value).isEmpty())t.hold=()->{if(t.committed||t.gliding)return;t.held=true;hidePreview();haptic(true);List<String> variants=new ArrayList<>();for(String text:accents(value).split(" "))variants.add(t.upper?text.toUpperCase(Locale.US):text);showVariants(t.key,variants,false);};
@@ -666,6 +806,12 @@ public class IosKeyboardService extends InputMethodService {
                         if(horizontal!=0||vertical!=0){t.cursorX-=horizontal*dp(8);t.cursorY-=vertical*dp(22);moveCursor(horizontal,vertical);}
                         continue;
                     }
+                    if(t.key.value.equals("123")&&symbols){
+                        // Sliding from 123 to a symbol types it on release and returns to the letters.
+                        Key target=hit(x,y);
+                        if(target!=t.highlight){if(t.highlight!=null)invalidateKey(t.highlight);t.highlight=target;if(target!=null)invalidateKey(target);}
+                        continue;
+                    }
                     if(distance>dp(16)&&t.hold!=null)handler.removeCallbacks(t.hold);
                     if(letter(t.key)&&!t.committed&&!t.held&&!t.multi&&!emojiSearching&&allowGlide&&prefs.getBoolean("glide",true)&&dictionary!=null){
                         for(int h=0;h<e.getHistorySize();h++)t.point(e.getHistoricalX(i,h),e.getHistoricalY(i,h));t.point(x,y);
@@ -681,10 +827,13 @@ public class IosKeyboardService extends InputMethodService {
                     if(t.hold!=null)handler.removeCallbacks(t.hold);
                     float dx=e.getX(index)-t.x,dy=e.getY(index)-t.y;
                     if(t.cursor){cursorPointer=-1;finishCursorDrag();}
+                    else if(t.key.value.equals("123")&&symbols){
+                        Key target=hit(e.getX(index),e.getY(index));
+                        if(target!=null&&!target.action&&target.value.length()==1){press(target.value);showLetters();}
+                    }
                     else if(t.gliding){
                         t.point(e.getX(index),e.getY(index));float[] path=new float[t.points.size()];for(int i=0;i<path.length;i++)path[i]=t.points.get(i);
-                        Map<Character,float[]> centers=new HashMap<>();for(Key k:keys)if(letter(k))centers.put(k.value.charAt(0),new float[]{k.box.centerX(),k.box.centerY()});
-                        finishGlide(path,centers,contentWidth/10,t.upper);invalidateLetters();
+                        if(letterLayout!=null)finishGlide(path,letterLayout,t.upper);invalidateLetters();
                     }else if(t.key.value.startsWith("em:")&&(Math.abs(dx)>dp(36)||Math.abs(dy)>dp(36))){press(dx<0||Math.abs(dy)>Math.abs(dx)&&dy<0?"emojinext":"emojiprev");}
                     else if(!t.held&&!t.committed)commitTouch(t);
                     touches.remove(id);invalidateKey(t.highlight==null?t.key:t.highlight);
