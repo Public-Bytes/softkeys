@@ -430,8 +430,8 @@ public class IosKeyboardService extends InputMethodService {
             case "more":second=!second;rebuild();return;
             case "voice":startVoiceInput();return;
             case "emoji":emoji=true;emojiSearching=false;emojiPage=0;emojiQuery="";symbols=numeric=false;rebuild();return;
-            case "emojinext":if(emojiPage+1<keyboard.emojiPages){emojiPage++;rebuild();}return;
-            case "emojiprev":if(emojiPage>0){emojiPage--;rebuild();}return;
+            case "emojinext":keyboard.settlePage(1);return;
+            case "emojiprev":keyboard.settlePage(-1);return;
             case "emojisearch":searchEmoji();return;
             case "emojidone":showEmojiResults();return;
             case "emojiquery":return;
@@ -535,10 +535,13 @@ public class IosKeyboardService extends InputMethodService {
     private final class KeyboardView extends View {
         private final ArrayList<Key> keys=new ArrayList<>();
         private final android.util.SparseArray<Touch> touches=new android.util.SparseArray<>();
-        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG),trailPaint=new Paint(Paint.ANTI_ALIAS_FLAG),trailShadow=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG),trailPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Typeface normal=Typeface.create("sans-serif",Typeface.NORMAL);
-        private final RectF rect=new RectF();private final Path iconPath=new Path(),trail=new Path(),surface=new Path();
-        private int navBottom,hover=-1,focused=-1,emojiPages=1,cursorPointer=-1;
+        private final RectF rect=new RectF();private final Path iconPath=new Path(),surface=new Path();
+        private int navBottom,hover=-1,focused=-1,emojiPages=1,cursorPointer=-1,emojiCols=7,emojiPageSize=21;
+        // Horizontal shift of the emoji grid while a page is dragged or settling, in pixels.
+        private float emojiOffset;
+        private android.animation.ValueAnimator pageAnimator;
         private float rowH,suggestionH,width,categoryH,contentLeft,contentWidth,keyGapX,keyGapY,keyRadius,topRadius;
         private boolean wide,shortScreen;
         private int layoutWidth=-1,layoutHeight=-1;
@@ -548,7 +551,7 @@ public class IosKeyboardService extends InputMethodService {
         private TextView previewText;
         private int previewPointer=-1;
         private final Runnable dismissPreview=this::hidePreview;
-        KeyboardView(){super(IosKeyboardService.this);setFocusable(true);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);setBackgroundColor(Color.TRANSPARENT);trailPaint.setColor(0xfffffdfa);trailPaint.setStrokeCap(Paint.Cap.ROUND);trailPaint.setStrokeJoin(Paint.Join.ROUND);trailPaint.setStyle(Paint.Style.STROKE);trailShadow.set(trailPaint);trailShadow.setColor(0xff504b55);}
+        KeyboardView(){super(IosKeyboardService.this);setFocusable(true);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);setBackgroundColor(Color.TRANSPARENT);trailPaint.setColor(0xfffffdfa);trailPaint.setStrokeCap(Paint.Cap.ROUND);trailPaint.setStrokeJoin(Paint.Join.ROUND);trailPaint.setStyle(Paint.Style.STROKE);}
         @Override public WindowInsets onApplyWindowInsets(WindowInsets insets){int bottom=insets.getSystemWindowInsetBottom();if(bottom!=navBottom){navBottom=bottom;requestLayout();}return insets;}
         @Override protected void onMeasure(int ws,int hs){
             width=MeasureSpec.getSize(ws);Configuration config=getResources().getConfiguration();
@@ -585,7 +588,7 @@ public class IosKeyboardService extends InputMethodService {
             else if(emoji){
                 keys.add(new Key("emojisearch",0,0,width,suggestionH,true));
                 visibleEmoji=emojiCatalog==null?Collections.emptyList():emojiCatalog.select(emojiCategory,emojiQuery,prefs);
-                int cols=Math.max(7,(int)(contentWidth/dp(45))),pageSize=cols*3;emojiPages=Math.max(1,(visibleEmoji.size()+pageSize-1)/pageSize);emojiPage=Math.max(0,Math.min(emojiPage,emojiPages-1));int offset=emojiPage*pageSize;
+                int cols=Math.max(7,(int)(contentWidth/dp(45))),pageSize=cols*3;emojiCols=cols;emojiPageSize=pageSize;emojiPages=Math.max(1,(visibleEmoji.size()+pageSize-1)/pageSize);emojiPage=Math.max(0,Math.min(emojiPage,emojiPages-1));int offset=emojiPage*pageSize;
                 for(int i=0;i<pageSize&&i+offset<visibleEmoji.size();i++){EmojiCatalog.Item item=visibleEmoji.get(i+offset);keys.add(new Key("em:"+item.emoji,contentLeft+contentWidth*(i%cols)/cols,suggestionH+(i/cols)*rowH,contentLeft+contentWidth*((i%cols)+1)/cols,suggestionH+(i/cols+1)*rowH,false));}
                 float top=suggestionH+rowH*3;for(int i=0;i<EmojiCatalog.NAMES.length;i++)keys.add(new Key("cat:"+i,width*i/10,top,width*(i+1)/10,top+categoryH,true));
                 rowAt(new String[]{"ABC","emojiprev","emojinext","space","delete","return"},top+categoryH,contentLeft,contentWidth,new float[]{1.5f,1,1,3.5f,1.5f,1.5f});
@@ -645,12 +648,71 @@ public class IosKeyboardService extends InputMethodService {
         }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);canvas.save();canvas.clipPath(surface);paint.setColor(background);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);canvas.drawPath(surface,paint);paint.setTypeface(normal);
+            boolean sliding=emoji&&emojiOffset!=0;
             for(Key k:keys){
+                if(sliding&&k.value.startsWith("em:"))continue;
                 drawKey(canvas,k);
             }
+            if(sliding){
+                // Draw the current page shifted with the finger, and the page that is coming in beside it.
+                canvas.save();canvas.clipRect(0,suggestionH,width,suggestionH+rowH*3);canvas.translate(emojiOffset,0);
+                for(Key k:keys)if(k.value.startsWith("em:"))drawKey(canvas,k);
+                int other=emojiPage+(emojiOffset<0?1:-1);
+                if(other>=0&&other<emojiPages){canvas.translate(emojiOffset<0?width:-width,0);drawEmojiPage(canvas,other);}
+                canvas.restore();
+            }
             if(emoji&&visibleEmoji.isEmpty()){paint.setColor(foreground);paint.setAlpha(180);paint.setTextSize(dp(16));drawText(canvas,emojiCatalog==null?"Loading emoji…":"No emoji found",width/2,suggestionH+rowH*1.5f);}
-            for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(!t.gliding)continue;trail.reset();for(int j=0;j<t.points.size();j+=2){if(j==0)trail.moveTo(t.points.get(j),t.points.get(j+1));else trail.lineTo(t.points.get(j),t.points.get(j+1));}trailShadow.setStrokeWidth(dp(6));trailShadow.setAlpha(35);canvas.drawPath(trail,trailShadow);trailPaint.setStrokeWidth(dp(4));trailPaint.setAlpha(215);canvas.drawPath(trail,trailPaint);}
+            for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.gliding)drawTrail(canvas,t.points);}
             if(focused>=0&&focused<keys.size()&&keyVisible(keys.get(focused))){paint.setColor(0xff69a9ff);paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));keyBounds(keys.get(focused),rect);canvas.drawRoundRect(rect,keyRadius,keyRadius,paint);paint.setStyle(Paint.Style.FILL);}
+            canvas.restore();
+        }
+        private void drawEmojiPage(Canvas canvas,int page){
+            paint.setStyle(Paint.Style.FILL);paint.setTextSize(dp(shortScreen?27:31));
+            int first=page*emojiPageSize;
+            for(int i=0;i<emojiPageSize&&i+first<visibleEmoji.size();i++){
+                EmojiCatalog.Item item=visibleEmoji.get(i+first);
+                float cx=contentLeft+contentWidth*((i%emojiCols)+.5f)/emojiCols,top=suggestionH+(i/emojiCols)*rowH;
+                paint.setColor(foreground);paint.setAlpha(255);drawText(canvas,item.emoji,cx,top+rowH/2);
+                if(!item.variants.isEmpty()){paint.setAlpha(100);canvas.drawCircle(cx,top+rowH-dp(3),dp(1),paint);}
+            }
+        }
+        private void invalidateEmoji(){invalidate(0,(int)suggestionH,getWidth(),(int)(suggestionH+rowH*3)+1);}
+        /** Slides the emoji grid to the next page (1), the previous page (-1) or back into place (0). */
+        void settlePage(int direction){
+            if(pageAnimator!=null)pageAnimator.end();
+            if(!emoji||direction!=0&&(emojiPage+direction<0||emojiPage+direction>=emojiPages))direction=0;
+            if(direction==0&&emojiOffset==0)return;
+            final int step=direction,category=emojiCategory;
+            android.animation.ValueAnimator animator=android.animation.ValueAnimator.ofFloat(emojiOffset,-step*width);
+            animator.setDuration(240);animator.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+            animator.addUpdateListener(a->{emojiOffset=(float)a.getAnimatedValue();invalidateEmoji();});
+            animator.addListener(new android.animation.AnimatorListenerAdapter(){
+                @Override public void onAnimationEnd(android.animation.Animator a){
+                    if(pageAnimator==a)pageAnimator=null;
+                    emojiOffset=0;
+                    if(step!=0&&emoji&&category==emojiCategory&&emojiPage+step>=0&&emojiPage+step<emojiPages){emojiPage+=step;rebuild();}
+                    else invalidate();
+                }
+            });
+            pageAnimator=animator;animator.start();
+        }
+        /**
+         * Draws the recent part of a glide as one translucent stroke. It is widest under the finger
+         * and narrows toward the older end, which then disappears.
+         */
+        private void drawTrail(Canvas canvas,ArrayList<Float> points){
+            int n=points.size();if(n<4)return;
+            float visible=dp(230),head=dp(15),tail=dp(2.5f),walked=0;
+            boolean darkSurface=Color.red(background)*.299f+Color.green(background)*.587f+Color.blue(background)*.114f<128;
+            trailPaint.setColor(darkSurface?0xffffffff:blend(background,foreground,.5f));trailPaint.setAlpha(255);
+            // One layer keeps the stroke evenly translucent where its pieces overlap.
+            canvas.saveLayerAlpha(0,0,getWidth(),getHeight(),darkSurface?105:120);
+            for(int j=n-2;j>=2&&walked<visible;j-=2){
+                float x1=points.get(j),y1=points.get(j+1),x0=points.get(j-2),y0=points.get(j-1);
+                trailPaint.setStrokeWidth(tail+(head-tail)*(1-walked/visible));
+                canvas.drawLine(x0,y0,x1,y1,trailPaint);
+                walked+=(float)Math.hypot(x1-x0,y1-y0);
+            }
             canvas.restore();
         }
         private void drawKey(Canvas canvas,Key k){
@@ -748,7 +810,7 @@ public class IosKeyboardService extends InputMethodService {
         private void hidePreview(){handler.removeCallbacks(dismissPreview);previewPointer=-1;if(keyPreview!=null&&keyPreview.isShowing())keyPreview.dismiss();}
         @Override protected void onDetachedFromWindow(){hidePreview();super.onDetachedFromWindow();}
         private final class Touch {
-            final Key key;Key highlight;final float x,y;final boolean upper;boolean held,committed,gliding,multi,cursor;
+            final Key key;Key highlight;final float x,y;final boolean upper;boolean held,committed,gliding,multi,cursor,paging;float velocity;long moveTime;
             float lastX,lastY,cursorX,cursorY;
             final ArrayList<Float> points=new ArrayList<>();Runnable hold;
             Touch(Key key,float x,float y){this.key=highlight=key;this.x=lastX=x;this.y=lastY=y;upper=shift;points.add(x);points.add(y);}
@@ -784,6 +846,7 @@ public class IosKeyboardService extends InputMethodService {
             int action=e.getActionMasked(),index=e.getActionIndex(),id=e.getPointerId(index);
             if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN){
                 if(cursorDragging())return true;
+                if(pageAnimator!=null)pageAnimator.end();
                 boolean multiple=touches.size()>0;
                 for(int i=0;i<touches.size();i++){Touch previous=touches.valueAt(i);previous.multi=true;if(previous.hold!=null)handler.removeCallbacks(previous.hold);if(!previous.gliding&&letter(previous.key))commitTouch(previous);}
                 Key key=hit(e.getX(index),e.getY(index));if(key==null)return true;
@@ -812,11 +875,27 @@ public class IosKeyboardService extends InputMethodService {
                         if(target!=t.highlight){if(t.highlight!=null)invalidateKey(t.highlight);t.highlight=target;if(target!=null)invalidateKey(target);}
                         continue;
                     }
+                    if(emoji&&t.key.value.startsWith("em:")&&!t.held&&!t.multi){
+                        float total=x-t.x;
+                        if(!t.paging&&Math.abs(total)>dp(10)&&Math.abs(total)>Math.abs(y-t.y)){
+                            t.paging=true;t.highlight=null;t.moveTime=e.getEventTime();
+                            if(t.hold!=null)handler.removeCallbacks(t.hold);
+                            hidePreview();
+                        }
+                        if(t.paging){
+                            // The grid follows the finger. It moves less when there is no page on that side.
+                            long now=e.getEventTime();
+                            if(now>t.moveTime)t.velocity=.6f*t.velocity+.4f*dx/(now-t.moveTime);
+                            t.moveTime=now;
+                            boolean edge=total>0&&emojiPage==0||total<0&&emojiPage+1>=emojiPages;
+                            emojiOffset=edge?total*.3f:total;invalidateEmoji();continue;
+                        }
+                    }
                     if(distance>dp(16)&&t.hold!=null)handler.removeCallbacks(t.hold);
                     if(letter(t.key)&&!t.committed&&!t.held&&!t.multi&&!emojiSearching&&allowGlide&&prefs.getBoolean("glide",true)&&dictionary!=null){
                         for(int h=0;h<e.getHistorySize();h++)t.point(e.getHistoricalX(i,h),e.getHistoricalY(i,h));t.point(x,y);
                         Key target=hit(x,y);if(!t.gliding&&distance>Math.max(dp(22),t.key.box.width()*.55f)&&letter(target)&&target!=t.key)t.gliding=true;
-                        if(t.gliding){hidePreview();t.highlight=target;invalidateLetters();}
+                        if(t.gliding){hidePreview();t.highlight=target;invalidate();}
                     }
                 }
                 return true;
@@ -833,8 +912,13 @@ public class IosKeyboardService extends InputMethodService {
                     }
                     else if(t.gliding){
                         t.point(e.getX(index),e.getY(index));float[] path=new float[t.points.size()];for(int i=0;i<path.length;i++)path[i]=t.points.get(i);
-                        if(letterLayout!=null)finishGlide(path,letterLayout,t.upper);invalidateLetters();
-                    }else if(t.key.value.startsWith("em:")&&(Math.abs(dx)>dp(36)||Math.abs(dy)>dp(36))){press(dx<0||Math.abs(dy)>Math.abs(dx)&&dy<0?"emojinext":"emojiprev");}
+                        if(letterLayout!=null)finishGlide(path,letterLayout,t.upper);invalidate();
+                    }else if(t.paging){
+                        // A drag past a fifth of the width, or a quick flick, moves to the neighboring page.
+                        int direction=emojiOffset<0&&(emojiOffset<-width*.2f||t.velocity<-dp(.45f))?1:emojiOffset>0&&(emojiOffset>width*.2f||t.velocity>dp(.45f))?-1:0;
+                        settlePage(direction);
+                    }
+                    else if(t.key.value.startsWith("em:")&&(Math.abs(dx)>dp(36)||Math.abs(dy)>dp(36))){settlePage(dx<0||Math.abs(dy)>Math.abs(dx)&&dy<0?1:-1);}
                     else if(!t.held&&!t.committed)commitTouch(t);
                     touches.remove(id);invalidateKey(t.highlight==null?t.key:t.highlight);
                 }
@@ -842,7 +926,7 @@ public class IosKeyboardService extends InputMethodService {
             }
             if(action==MotionEvent.ACTION_CANCEL){cancelTouches();return true;}return true;
         }
-        void cancelTouches(){hidePreview();for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.hold!=null)handler.removeCallbacks(t.hold);invalidateKey(t.key);if(t.gliding)invalidateLetters();}touches.clear();if(cursorDragging())finishCursorDrag();}
+        void cancelTouches(){hidePreview();for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.hold!=null)handler.removeCallbacks(t.hold);invalidateKey(t.key);if(t.gliding)invalidate();}touches.clear();if(emojiOffset!=0&&pageAnimator==null)settlePage(0);if(cursorDragging())finishCursorDrag();}
         @Override public boolean performClick(){return super.performClick();}
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider(){return nodes;}
         private String accessibilityLabel(Key key){
