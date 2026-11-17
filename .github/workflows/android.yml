@@ -44,6 +44,12 @@ jobs:
       - name: Install Android platform and build tools
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
+      - name: Check dictionary accuracy
+        run: |
+          mkdir -p build/bench-out
+          javac -d build/bench-out bench/*.java app/src/main/java/dev/softkeys/ios/EnglishDictionary.java
+          java -cp build/bench-out BenchMain . --quick
+
       - name: Build unsigned release
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 

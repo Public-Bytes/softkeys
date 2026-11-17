@@ -25,7 +25,9 @@ Debug builds use a development certificate and cannot update an installed signed
 | `app/src/main/java/dev/softkeys/ios/MicrophonePermissionActivity.java` | Microphone explanation, runtime permission, and settings recovery after denial. |
 | `app/src/main/java/dev/softkeys/ios/MainActivity.java` | Keyboard setup, appearance, typing settings, and sample field. |
 | `app/src/main/java/dev/softkeys/ios/KeyboardPreferences.java` | Shared preferences, appearance migration, and hold duration bounds. |
-| `app/src/main/java/dev/softkeys/ios/EnglishDictionary.java` | Local suggestions, spelling correction, and glide decoding. |
+| `app/src/main/java/dev/softkeys/ios/EnglishDictionary.java` | Local suggestions, spelling correction, and glide decoding. It uses no Android classes. |
+| `app/src/main/assets/lexicon.tsv` | Additions to the word list. It holds contractions, capital letters for names, extra words, and removals. |
+| `bench/` | Offline accuracy checks for `EnglishDictionary`. |
 | `app/src/main/java/dev/softkeys/ios/EmojiCatalog.java` | Emoji categories, search, variants, and recent selections. |
 | `app/src/main/assets/` | English dictionary, Unicode emoji data, and third-party licenses. |
 | `probe/` | Separate development app with text, number, password, and search fields. |
@@ -37,6 +39,38 @@ The keyboard retains its view and cached context when an editor restarts the sam
 Ordinary Backspace uses Android delete-key events for compatibility with custom editors. Compound emoji use whole-grapheme deletion when the editor supports it. Cursor control uses arrow-key events so the editor handles character boundaries and line layout.
 
 Autocorrect, glide typing, and field privacy are handled separately. Changes to input-type handling should preserve password restrictions and avoid silently rewriting commands or address syntax.
+
+## Dictionary engine
+
+`EnglishDictionary.analyze` returns the suggestions for the typed letters and the replacement that a word boundary applies. It scores each candidate word as the log of its count minus an edit cost. A substitution costs less when the tap was close to the other key. Swapped, missing, and doubled letters have fixed costs. An unknown typed word is replaced when the best score passes a threshold, and the threshold is higher for words of two to four letters. A known typed word is replaced only by a different spelling of the same letters with an apostrophe, by a far more common word of the same length, or by the same letters with one letter doubled.
+
+The service records the touch position of each letter in the current word and passes the positions to `analyze`. Positions are dropped when they no longer match the letters before the cursor.
+
+`EnglishDictionary.glide` works in units of one key width. It resamples the path, then matches the points to the keys of each candidate word in order. The cost adds the distance of the path from each key, the distance of each point from the straight line between two neighboring keys, a charge for sharp turns that are far from the keys, and the difference between the path length and the expected length. The weights were fitted on recorded swipes.
+
+Learned words are saved in the `learnedWords` preference and passed to `setUserWords`. A learned word is never corrected, and it can appear in suggestions and glide results.
+
+## Accuracy checks
+
+`bench/TypingBench.java` checks a list of fixed corrections, simulated tap typing, unknown words, and recorded swipes. It needs only a JDK.
+
+```sh
+mkdir -p build/bench-out
+javac -d build/bench-out bench/*.java app/src/main/java/dev/softkeys/ios/EnglishDictionary.java
+java -cp build/bench-out BenchMain . --quick
+```
+
+The command exits with an error when a fixed correction fails. GitHub Actions runs it on every build. Add `-v` to list the words that went wrong, and drop `--quick` for larger samples.
+
+The swipe checks use the [How We Swipe dataset](https://osf.io/sj67f/) by Leiva, Kim, Cui, Bi, and Oulasvirta, which is MIT licensed. The data is not part of the repository or the app. To use it, download `swipelogs.zip` from that page, unpack it, and convert the logs.
+
+```sh
+python3 bench/convert_swipes.py path/to/swipelogs build/bench-data/swipes.tsv
+```
+
+The glide weights were fitted on swipes from the first 40,000 lines of that file. Run the checks with `--holdout` to measure on the lines after them.
+
+Run the checks before and after any change to the costs, thresholds, glide weights, or `lexicon.tsv`, and compare the numbers.
 
 ## Dictation
 
@@ -65,6 +99,7 @@ Dictation temporarily replaces the clipboard and word suggestions above the keys
 | `clipboardSuggestions` | `true` | Recent copied text in the suggestion strip, with a two-minute lifetime and no saved history. |
 | `keyPopups` | `true` | Enlarged character preview. |
 | `holdDuration` | `300` | Hold delay in milliseconds, bounded to 150 through 1000. |
+| `learnedWords` | empty | Words the user kept after a correction. At most 2000 words, never from password fields. |
 
 Clipboard suggestions use `ClipDescription.getTimestamp()` to reject old items and a delayed callback to clear eligible text. Pasting, dismissing, or typing clears the in-memory text and remembers only the dismissed copy timestamp for the service lifetime. The same item is not offered again during that service session. No clipboard content or history is written to preferences or files. Clipboard updates use existing header keys with adjusted drawing, hit areas, and accessibility bounds, without rebuilding the letter rows.
 

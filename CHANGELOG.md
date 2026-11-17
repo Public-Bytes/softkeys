@@ -1,5 +1,26 @@
 # Release notes
 
+## 1.9
+
+Rewrote autocorrect. It now compares the typed letters with every dictionary word using the position of each tap, so a tap near the edge of a key can count as the neighboring letter. It also handles swapped, missing, and doubled letters. The middle suggestion is highlighted when a space or punctuation mark will insert it, and your own spelling appears in quotes on the left.
+
+Autocorrect is more careful with words it does not know. Short unknown words, acronyms, and mixed case text are left alone unless the evidence is strong. In the offline check, 1.8 changed 52 of 100 correctly typed words that were missing from the dictionary. 1.9 changes 8 of 100.
+
+Restored contractions. The bundled word list had fragments such as "didn" and "doesn" in place of "didn't" and "doesn't". The dictionary now holds contractions, capital letters for days, months, places and common names, and common texting and technology words.
+
+SoftKeys now learns the words you keep. Restoring your spelling with Backspace keeps the word until the keyboard restarts. Restoring it twice, or tapping your spelling in the suggestions, saves it on the phone. Reset learned words in settings clears the list.
+
+Rewrote glide decoding. The decoder matches the whole path to the keys of each word in order, and it uses sharp turns and the path length. On recorded human swipes, the first choice matched the intended word in 84 of 100 swipes, up from 74 in 1.8. Backspace right after a glide removes the whole word. A glide after punctuation starts with a space and a capital letter when a sentence begins.
+
+Fixed keyboard behavior:
+
+- A space after a number or symbol returns to the letters. An apostrophe does the same. Holding 123, sliding to a symbol, and lifting types that symbol and returns to the letters.
+- Punctuation typed from the symbols layout now corrects the word before it. Punctuation after a glide or a chosen suggestion replaces the added space.
+- Taps in the side margins and beside the A and L keys now type the nearest key. They were ignored before.
+- Held Backspace removes whole words after the first characters. The double-space period allows 700 ms between the spaces.
+
+The release build completed. Emulator review on a narrow phone layout covered the items above. Wide layouts, physical devices, Chrome, and Terminus were not reviewed. The offline check in `bench/` runs in GitHub Actions without the recorded swipes.
+
 ## 1.8
 
 Removed the 45-second dictation cutoff. Pausing no longer finishes the dictation session. Tap Stop or the microphone again when finished, or Cancel to discard the session.

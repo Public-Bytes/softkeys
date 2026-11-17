@@ -88,6 +88,12 @@ public class MainActivity extends Activity {
         toggle("Automatic capitalization", "autocaps", true);
         toggle("Double-space period", "doubleSpacePeriod", true);
         page.addView(text("Slide through letters to type a word. Tap a suggestion to change it. Press Backspace immediately after an automatic correction to restore your spelling.",13,muted));gap(12);
+        button("Reset learned words",()->{
+            int count=KeyboardPreferences.learnedWords(prefs).size();
+            new android.app.AlertDialog.Builder(this).setTitle("Reset learned words").setMessage(count==0?"SoftKeys has not learned any words yet.":"SoftKeys will forget "+count+(count==1?" word":" words")+" that you chose to keep.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Reset",(dialog,which)->prefs.edit().remove("learnedWords").apply()).show();
+        },false);
+        page.addView(text("When you restore your own spelling twice, or choose it in the suggestions, SoftKeys saves that word on this phone and stops correcting it.",13,muted));gap(12);
         button("Open source licenses",()->{
             try(java.io.InputStream source=getAssets().open("licenses/NOTICE.txt")){
                 java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=source.read(buffer))!=-1)bytes.write(buffer,0,n);String notice=bytes.toString("UTF-8");

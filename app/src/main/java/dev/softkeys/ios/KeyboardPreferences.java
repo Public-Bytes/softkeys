@@ -16,6 +16,10 @@ final class KeyboardPreferences {
     static int holdDelay(SharedPreferences prefs) {
         return Math.max(150,Math.min(1000,prefs.getInt("holdDuration",300)));
     }
+    /** Words the user chose to keep after the keyboard tried to correct them. */
+    static java.util.Set<String> learnedWords(SharedPreferences prefs) {
+        return new java.util.LinkedHashSet<>(prefs.getStringSet("learnedWords",java.util.Collections.emptySet()));
+    }
     static SharedPreferences open(Context context) {
         SharedPreferences prefs=context.getSharedPreferences("keyboard",0);
         // Apply the newly requested reference design once to existing installations.

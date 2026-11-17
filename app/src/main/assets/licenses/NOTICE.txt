@@ -3,6 +3,7 @@ https://github.com/hermitdave/FrequencyWords
 Source corpus: OpenSubtitles 2018, https://opus.nlpl.eu/OpenSubtitles2018.php
 Licensed under CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/
 SoftKeys modifications: retained lowercase ASCII words and contractions, maximum 26 characters; converted spaces to tabs. The modified dictionary remains under CC BY-SA 4.0.
+lexicon.tsv, written for SoftKeys, adds contractions with estimated counts, capital letters for names, and extra words, and it removes fragments and some misspellings from the list.
 
 Emoji names and sequences: Unicode Emoji 16.0, Copyright 2024 Unicode, Inc.
 https://www.unicode.org/Public/emoji/16.0/emoji-test.txt
