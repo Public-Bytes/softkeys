@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.10
+
+Changed the glide trail to a translucent stroke that is widest under the finger and narrows toward the older end. Only the recent part of the path is drawn. The trail is gray on the light and lavender themes and white on the dark theme.
+
+Emoji pages now slide. The grid follows a sideways drag, and the neighboring page moves in beside it. Lifting after a drag of a fifth of the width, or after a quick flick, moves to that page, and a shorter drag returns to the current page. The page arrows and vertical swipes use the same slide.
+
+The release build completed. A screen recording on the emulator's narrow phone layout showed the trail and the page slide on the light theme. The dark and lavender themes, wide layouts, and physical devices were not reviewed.
+
 ## 1.9
 
 Rewrote autocorrect. It now compares the typed letters with every dictionary word using the position of each tap, so a tap near the edge of a key can count as the neighboring letter. It also handles swapped, missing, and doubled letters. The middle suggestion is highlighted when a space or punctuation mark will insert it, and your own spelling appears in quotes on the left.
