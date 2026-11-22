@@ -75,7 +75,7 @@ public final class DictationCleanup {
 
     /**
      * Reads the words the user wants spelled exactly. They are the written side of each
-     * one-word rule, such as "Yaksich" in "joksich => Yaksich", and any line that holds a
+     * one-word rule, such as "Kaczmarek" in "kachmarek => Kaczmarek", and any line that holds a
      * single word with no arrow.
      */
     public static List<String> parseVocabulary(String text){
@@ -250,8 +250,8 @@ public final class DictationCleanup {
     }
 
     /**
-     * Replaces a word that sounds like a vocabulary word, such as "Joksich" or "Jarkswich" for
-     * "Yaksich". Each word is reduced to a sound key, and a word matches when its key is within
+     * Replaces a word that sounds like a vocabulary word, such as "Kachmarek" or "Kazmarek" for
+     * "Kaczmarek". Each word is reduced to a sound key, and a word matches when its key is within
      * one edit of the vocabulary word's key, or two edits for a key of 7 or more letters. Known
      * English words, and words shorter than 4 letters, are never changed.
      */
@@ -318,7 +318,7 @@ public final class DictationCleanup {
         return row[b.length()];
     }
 
-    /** Capitalizes a lowercase replacement, such as "yaksich", when the word it replaces was capitalized. */
+    /** Capitalizes a lowercase replacement, such as "kaczmarek", when the word it replaces was capitalized. */
     private static String matchCapital(String written,boolean capital){
         if(!capital||written.isEmpty()||written.chars().anyMatch(Character::isUpperCase))return written;
         return Character.toUpperCase(written.charAt(0))+written.substring(1);
