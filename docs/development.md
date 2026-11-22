@@ -109,12 +109,11 @@ The speech model benchmark in `bench/dictation/` needs the sherpa-onnx Linux JNI
 
 ### Dictation keyboard
 
-The microphone key turns the keyboard into the dictation keyboard and starts recording. The dictation keyboard is a panel drawn by the same `KeyboardView`. It is shorter than the letter keyboard and has four rows:
+The microphone key turns the keyboard into the dictation keyboard and starts recording. The dictation keyboard is a panel drawn by the same `KeyboardView`. It is shorter than the letter keyboard and has three rows:
 
 1. A hint on the left and the Clean or Verbatim style on the right. While recording, the hint becomes a red dot and a timer.
 2. A recessed well. When idle, it holds a row of dots and the Dictate button. While recording, it holds Cancel (×), the level meter, and Done. While transcribing, Done shows a spinner. A message with a button replaces the well's contents when the microphone permission is missing, when no engine can run, or after an error.
-3. Space, Delete, and Return. They insert a plain space, delete like Backspace with the same repeat on hold, and run the editor's action or insert a line break. They do nothing while a recording is open, so dictated text lands where the user started.
-4. The keyboard button, labeled "Show keyboard" for accessibility.
+3. The keyboard button, labeled "Show keyboard" for accessibility, followed by Space, Delete, and Return. Space, Delete, and Return insert a plain space, delete like Backspace with the same repeat on hold, and run the editor's action or insert a line break. They do nothing while a recording is open, so dictated text lands where the user started. The keyboard button works at any time.
 
 The `dictationKeyboard` preference saves whether the panel is on. `DictationMode.showPanel` shows the panel only when that preference is on and `DictationMode.fieldAllowsDictation` allows the field. Password, PIN, number, phone, and date fields, fields without predictions, and fields with `IME_FLAG_NO_PERSONALIZED_LEARNING` show the keys and never record, and the preference is not changed. `onStartInput` and `onStartInputView` recompute the panel, because the field, the microphone permission, and the downloaded models can change while the keyboard is hidden. Changing fields does not start recording. The Dictate button starts the next recording.
 

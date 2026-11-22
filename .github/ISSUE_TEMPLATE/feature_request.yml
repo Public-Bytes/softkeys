@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an idea for SoftKeys.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What you'd like SoftKeys to do, and how you'd use it. If it works a certain way on iOS, describe that too.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: The problem it solves for you.

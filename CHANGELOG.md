@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.13
+
+The keyboard button on the dictation keyboard now sits at the left end of the bottom row, beside Space, Delete, and Return, instead of on a row of its own. The dictation keyboard is shorter as a result. The space below the keys on phones with gesture or button navigation is Android's navigation bar and is unchanged.
+
+The project is prepared for public release. The README explains what SoftKeys is, how to install it, what it needs, and what it does with your data. The broken build status image at the top of the README is removed. The source code is released under the MIT License, and the repository now has contribution guidelines and issue forms for bug reports and feature requests.
+
 ## 1.12
 
 The microphone now turns SoftKeys into a dictation keyboard. The letter keys, numbers, and suggestions are replaced by a shorter dark or light panel, matching the current theme, and recording starts at once. While recording, the panel shows a red dot with a timer, a level meter driven by the microphone, × to discard, and Done. Done inserts the text and returns the panel to its idle state, where the Dictate button starts the next recording. Space, Delete (with repeat on hold), and Return stay at the bottom, and Return runs the field's action, such as Send. The keyboard button at the bottom left brings the keys back. If a recording is open, it is finished and its text is inserted, and anything typed in the meantime follows it. SoftKeys remembers the choice, so other fields and the next time the keyboard opens show the dictation keyboard until you tap the keyboard button. The Stop and Cancel controls above the keys from earlier releases are gone.
