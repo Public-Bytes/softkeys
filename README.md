@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation uses your phone's speech recognition service. The current release is **1.10**.
+SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation can run on the phone with a speech model that you download once, or it can use your phone's speech recognition service. The current release is **1.11**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.10.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.11.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -47,7 +47,7 @@ The release uses the same signing certificate as the previous signed SoftKeys do
 | Repeated deletion | Hold Backspace. It removes characters first and then whole words. |
 | Clipboard suggestion | Tap the Paste chip above the keys to insert recently copied text. Tap its close button to dismiss it. |
 | Emoji | Open the emoji picker for categories, search, and recent selections. Drag sideways to slide between pages. Hold an emoji with a dot below it for variants. |
-| Dictation | Tap the microphone to speak while SoftKeys stays visible. Tap Stop or the microphone again to finish, or Cancel to discard the request. |
+| Dictation | Tap the microphone to speak while SoftKeys stays visible. Tap Stop or the microphone again to finish, or Cancel to discard the request. On-device dictation cleans up the text before it is inserted. |
 
 Autocorrect, suggestions, and glide decoding use a bundled English dictionary with contractions, common names, and common texting and technology words. Autocorrect uses where each tap landed, so a tap near the edge of a key can be read as the neighboring letter. Recognized words, acronyms, and mixed case text are preserved. Short words that the dictionary does not hold are changed only when the evidence is strong. URL and path syntax stays literal, while ordinary search words can be corrected.
 
@@ -63,13 +63,26 @@ The first microphone tap asks for audio permission. After granting access, retur
 
 Dictation stays active through pauses until you tap Stop or the microphone again. There is no session timer. Listening status and partial text appear above the keys, and Stop inserts the accumulated transcript into the original field. Cancel discards the session. Typing, moving the cursor, hiding the keyboard, or changing fields cancels dictation. Password and numeric fields do not support dictation.
 
-On Android 13 and later, SoftKeys supplies a continuous audio stream to providers that support segmented recognition. Older Android versions and providers that end each request use automatically repeated recognition requests, which can have brief gaps between requests. Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
+Choose the dictation engine in SoftKeys settings. **Phone speech service** is the default and works as in earlier releases. **On-device (Hex-style)** recognizes speech on the phone with the NVIDIA FastConformer streaming English model, which SoftKeys runs with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The model is about 137 MB and is not part of the APK. Choose **Download speech model** in settings to fetch it from Hugging Face. Settings shows the progress, and SoftKeys checks the size and SHA-256 of each file before using it. **Delete speech model** removes it. If On-device is selected and the model is not downloaded, SoftKeys shows a short notice and uses the phone speech service.
+
+The first on-device session after a while loads the model, and the strip shows "Loading speech model…". Speech during loading is kept and recognized when the model is ready. Partial text appears while you speak. The model writes lowercase text without punctuation, so the cleanup step adds capitals and spacing. On-device dictation needs a 64-bit ARM phone. Other phones use the phone speech service.
+
+The cleanup step for on-device dictation applies these rules before the text is inserted:
+
+- It removes "um", "uh", "er", and similar sounds, and it removes "you know" and "like" when commas set them apart. It also removes stutters and repeated words, such as "I I think" or "the the". Repeats that are often deliberate, such as "very very" and number sequences, are kept.
+- It turns spoken "comma", "period", "question mark", "exclamation point", "colon", "new line", and "new paragraph" into punctuation. Turn off **Spoken punctuation** to keep these words. "Period" stays a word in phrases such as "a period of time".
+- It applies your **Word replacements**, one rule per line, such as `soft keys => SoftKeys`. A rule with nothing after the arrow removes the words.
+- It fixes spacing around punctuation and capitalizes sentences and the word "I".
+
+The live preview uses a lighter version of the same rules. Turn off **Clean up dictated text** to insert the model's text unchanged. Cleanup does not apply to the phone speech service.
+
+When the phone speech service is used on Android 13 and later, SoftKeys supplies a continuous audio stream to providers that support segmented recognition. Older Android versions and providers that end each request use automatically repeated recognition requests, which can have brief gaps between requests. Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
 
 <img src="docs/images/dictation.png" alt="SoftKeys stays visible during dictation, with Listening, Stop, and Cancel above the keys" width="300">
 
 ## Settings
 
-Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
+Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. The Dictation section holds the engine choice, the speech model download, cleanup switches, and word replacements. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
 
 Open **Keypress vibration** to choose a duration from 1 to 100 ms using a slider or an exact number, including 2 ms. Moving the slider previews the vibration when Haptic feedback is on. Save keeps the value, Cancel preserves the previous value, and Default selects the existing 12 ms default. Hold feedback adjusts with the chosen duration.
 
@@ -93,7 +106,9 @@ Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25
 
 SoftKeys does not send typed text over the network, and it does not save what you type. The exception is the list of learned words, which holds single words that you chose to keep after a correction. The list is saved on the phone, never includes text from password fields, and can be cleared with Reset learned words. Keyboard settings and recent emoji selections are also saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
 
-The app requests Android's normal `VIBRATE` permission for haptic feedback and optional `RECORD_AUDIO` permission for dictation. It has no network, contacts, or storage permissions. Dictation sends microphone audio to the phone's speech recognition service, which may send it to its provider. SoftKeys does not save microphone audio or transcripts to files.
+The app requests Android's normal `VIBRATE` permission for haptic feedback, optional `RECORD_AUDIO` permission for dictation, and `INTERNET` permission. SoftKeys uses the network only when you choose Download speech model. The download fetches fixed public model files from Hugging Face over HTTPS and sends no audio, text, or device details. The model is saved in app storage that is excluded from backups. SoftKeys has no contacts or storage permissions.
+
+On-device dictation keeps microphone audio in memory on the phone and never sends it anywhere. The phone speech service receives microphone audio and may send it to its provider. SoftKeys does not save microphone audio or transcripts to files. Word replacement rules are saved in SoftKeys settings on the phone.
 
 ## Build
 
@@ -105,13 +120,15 @@ cd softkeys
 ./gradlew :app:assembleRelease --console=plain
 ```
 
-The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions checks the unsigned release build. Manual workflow runs can also upload the unsigned APK when Actions storage is available. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
+The build downloads the sherpa-onnx 2.0.2 Android library from GitHub once and checks its SHA-256, so the first build needs network access. The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions checks the unsigned release build. Manual workflow runs can also upload the unsigned APK when Actions storage is available. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
 
 See [Development](docs/development.md) for the source layout, the sample editor, and release guidance.
 
 ## Current limits
 
 Glide decoding and autocorrect judge each word alone. They do not use the words before it, so words with the same or nearly the same path, such as "to" and "too" or "has" and "had", are chosen by how common they are. On recorded swipes from the public How We Swipe dataset, the first choice matched the intended word in about 84 of 100 swipes, and the intended word was among the three choices in about 92 of 100. Cursor control depends on the editor's handling of Android arrow keys. Custom editors can behave differently from standard Android text fields.
+
+On-device dictation recognizes English only and does not add punctuation by itself. Without spoken punctuation, a long dictation becomes one sentence. The cleanup rules use word lists and pauses, so some fillers stay and some deliberate repeats can be removed. On-device accuracy was not measured on a phone.
 
 Emoji use the device's Android font, so artwork and available characters depend on Android. Apple emoji artwork is not included. Haptic feedback depends on physical device hardware and system restrictions.
 
@@ -120,5 +137,7 @@ For 1.9, the dictionary engine was measured with `bench/TypingBench.java` on sim
 ## Data and licenses
 
 The English dictionary is derived from Hermit Dave's [FrequencyWords English 2018 list](https://github.com/hermitdave/FrequencyWords), based on OpenSubtitles 2018. It retains lowercase ASCII words and contractions up to 26 characters, with tab-separated counts. The modified dictionary is distributed under [CC BY-SA 4.0](app/src/main/assets/licenses/CC-BY-SA-4.0.txt). The source list splits contractions at the apostrophe, so `lexicon.tsv` adds contractions with estimated counts, capital letters for common names, and common texting and technology words. It also removes the leftover fragments and some misspellings. `lexicon.tsv` was written for SoftKeys.
+
+On-device dictation uses [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 2.0.2 under the [Apache License 2.0](app/src/main/assets/licenses/Apache-2.0.txt). Its Android library links ONNX Runtime and other components under the MIT, Apache 2.0, BSD 3-Clause, and Mozilla Public License 2.0 licenses, which are listed in NOTICE.txt. The downloaded speech model is NVIDIA's [stt_en_fastconformer_hybrid_large_streaming_multi](https://huggingface.co/nvidia/stt_en_fastconformer_hybrid_large_streaming_multi), converted by the sherpa-onnx project, under [CC BY 4.0](app/src/main/assets/licenses/CC-BY-4.0.txt). The cleanup rules were written for SoftKeys after reading the cleanup steps in [Hex](https://github.com/anomalyco/hex), which is MIT licensed. No Hex code is included.
 
 Emoji names and sequences come from [Unicode Emoji 16.0](https://www.unicode.org/Public/emoji/16.0/emoji-test.txt), under the [Unicode License v3](app/src/main/assets/licenses/Unicode-3.0.txt). Attribution and notices are bundled in [NOTICE.txt](app/src/main/assets/licenses/NOTICE.txt) and are available in the app's license screen.

@@ -1,8 +1,76 @@
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+
 apply plugin: 'com.android.application'
+
+// On-device dictation uses the prebuilt sherpa-onnx speech library (Apache-2.0), with
+// ONNX Runtime linked in. The build downloads the pinned release AAR once, checks its
+// SHA-256, and copies only libsherpa-onnx-jni.so for each ABI. The Java bindings in
+// com.k2fsa.sherpa.onnx must match this version. No speech model is bundled.
+def sherpaVersion = '2.0.2'
+def sherpaAar = "sherpa-onnx-static-link-onnxruntime-${sherpaVersion}.aar"
+def sherpaUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${sherpaVersion}/${sherpaAar}"
+def sherpaSha256 = 'cb73564809268c8b96bf98f1a32b0b3b611e01d028d22f10beb57ef55418c0cb'
+def sherpaAbis = ['arm64-v8a', 'x86_64']
+def sherpaJniLibs = layout.buildDirectory.dir('generated/sherpa-onnx/jniLibs')
+
+def sha256 = { File file ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    file.withInputStream { input ->
+        byte[] buffer = new byte[65536]
+        int count
+        while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+    }
+    digest.digest().collect { String.format('%02x', it) }.join()
+}
+
+def prepareSherpaOnnx = tasks.register('prepareSherpaOnnx') {
+    inputs.property('url', sherpaUrl)
+    inputs.property('sha256', sherpaSha256)
+    inputs.property('abis', sherpaAbis)
+    outputs.dir(sherpaJniLibs)
+    doLast {
+        // The download is cached outside the build directory so a clean build does not repeat it.
+        File cache = new File(gradle.gradleUserHomeDir, "caches/softkeys/${sherpaAar}")
+        if (!cache.isFile() || sha256(cache) != sherpaSha256) {
+            cache.parentFile.mkdirs()
+            File part = new File(cache.path + '.part')
+            new URL(sherpaUrl).openStream().withCloseable { input -> part.withOutputStream { it << input } }
+            String actual = sha256(part)
+            if (actual != sherpaSha256) {
+                part.delete()
+                throw new GradleException("${sherpaAar} checksum mismatch: ${actual}")
+            }
+            if (!part.renameTo(cache)) throw new GradleException("Could not save ${cache}")
+        }
+        File output = sherpaJniLibs.get().asFile
+        project.delete(output)
+        new ZipFile(cache).withCloseable { zip ->
+            sherpaAbis.each { abi ->
+                def entry = zip.getEntry("jni/${abi}/libsherpa-onnx-jni.so")
+                if (entry == null) throw new GradleException("${sherpaAar} has no ${abi} library")
+                File target = new File(output, "${abi}/libsherpa-onnx-jni.so")
+                target.parentFile.mkdirs()
+                zip.getInputStream(entry).withCloseable { input -> target.withOutputStream { it << input } }
+            }
+        }
+    }
+}
+
 android {
     namespace 'dev.softkeys.ios'
     compileSdk 36
-    defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 11; versionName '1.10' }
-    buildTypes { release { minifyEnabled false } }
+    defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 12; versionName '1.11' }
+    buildTypes {
+        // Release builds carry only the 64-bit ARM library, about 9 MB compressed. Phones without
+        // it, including 32-bit phones, use the phone speech service. x86_64 is for emulator testing.
+        release { minifyEnabled false; ndk { abiFilters 'arm64-v8a' } }
+        debug { ndk { abiFilters 'arm64-v8a', 'x86_64' } }
+    }
+    sourceSets { main { jniLibs.srcDirs += sherpaJniLibs } }
+    // Compress the native library in the APK. It is about 25 MB per ABI uncompressed.
+    packaging { jniLibs { useLegacyPackaging true } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
+
+tasks.named('preBuild') { dependsOn prepareSherpaOnnx }

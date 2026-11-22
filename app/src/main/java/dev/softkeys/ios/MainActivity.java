@@ -16,12 +16,15 @@ public class MainActivity extends Activity {
     private TextView status;
     private EditText sample;
     private TextView vibrationSetting;
+    private TextView modelStatus,modelButton;
+    private final SpeechModel.Listener modelListener=this::updateModel;
     private Vibrator vibrator;
     private android.content.SharedPreferences prefs;
     int ink=Color.rgb(34,34,39), muted=Color.rgb(107,105,117);
     int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     @Override public void onCreate(Bundle state){super.onCreate(state); prefs=KeyboardPreferences.open(this);vibrator=Build.VERSION.SDK_INT>=31?getSystemService(VibratorManager.class).getDefaultVibrator():(Vibrator)getSystemService(VIBRATOR_SERVICE);render();}
-    @Override public void onResume(){super.onResume();updateStatus();}
+    @Override public void onResume(){super.onResume();updateStatus();SpeechModel.addListener(modelListener);updateModel();}
+    @Override public void onPause(){SpeechModel.removeListener(modelListener);super.onPause();}
     @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)updateStatus();}
     private void updateStatus(){
         if(status==null)return;
@@ -79,8 +82,7 @@ public class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar bar){}
         });page.addView(holdDuration,new LinearLayout.LayoutParams(-1,dp(48)));
         page.addView(text("Choose 150 to 1000 ms. Applies to accents, emoji variants, cursor control, Caps Lock, and repeated deletion.",13,muted));gap(12);
-        button("Microphone access",()->startActivity(new Intent(this,MicrophonePermissionActivity.class)),false);
-        page.addView(text("Dictation stays active through pauses. Tap Stop or the microphone again to finish. Your phone's speech recognition service processes audio and may send it to its provider.",13,muted));gap(8);
+        dictationSettings();
         toggle("Autocorrect", "autocorrect", true);
         toggle("Glide typing", "glide", true);
         toggle("Clipboard suggestions", "clipboardSuggestions", true);
@@ -102,8 +104,59 @@ public class MainActivity extends Activity {
             }catch(java.io.IOException ignored){}
         },false);gap(12);
         sample=new EditText(this);sample.setTextColor(ink);sample.setHintTextColor(muted);sample.setHint("Tap here to try your keyboard");sample.setTextSize(17);sample.setGravity(Gravity.TOP);sample.setPadding(dp(16),dp(15),dp(16),dp(15));sample.setBackground(bg(Color.WHITE,14));sample.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);sample.setMinLines(3);sample.setContentDescription("Try your keyboard");page.addView(sample,new LinearLayout.LayoutParams(-1,dp(112)));gap(16);
-        page.addView(text("English (US), autocorrect, glide typing, dictation and emoji\nText predictions stay on your phone. Dictation uses your phone's speech recognition service.",12,muted));
+        page.addView(text("English (US), autocorrect, glide typing, dictation and emoji\nText predictions stay on your phone. On-device dictation keeps audio on your phone. The phone speech service may send audio to its provider.",12,muted));
         setContentView(scroll);
+    }
+    private void dictationSettings(){
+        TextView title=text("Dictation",19,ink);title.setTypeface(null,Typeface.BOLD);page.addView(title);gap(8);
+        RadioGroup engines=new RadioGroup(this);engines.setOrientation(LinearLayout.VERTICAL);
+        String[] names={"On-device (Hex-style)","Phone speech service"};String[] values={"device","system"};
+        String engine=prefs.getString("dictationEngine","system");
+        for(int i=0;i<names.length;i++){RadioButton radio=new RadioButton(this);radio.setText(names[i]);radio.setTextColor(ink);radio.setId(200+i);engines.addView(radio,new RadioGroup.LayoutParams(-1,dp(44)));if(values[i].equals(engine))radio.setChecked(true);}
+        engines.setOnCheckedChangeListener((g,id)->prefs.edit().putString("dictationEngine",values[id-200]).apply());page.addView(engines);
+        page.addView(text("On-device dictation uses a speech model that SoftKeys downloads once. Speech is recognized on this phone, and audio is never sent or saved. Until the model is downloaded, SoftKeys uses the phone speech service, which may send audio to its provider.",13,muted));gap(8);
+        modelStatus=text("",14,ink);page.addView(modelStatus);gap(6);
+        modelButton=button("",this::modelAction,false);
+        toggle("Clean up dictated text","dictationCleanup",true);
+        toggle("Spoken punctuation","spokenPunctuation",true);
+        page.addView(text("Cleanup removes um and uh, stutters, and repeated words, fixes spacing, and capitalizes sentences. With spoken punctuation, say \"comma\", \"period\", \"question mark\", or \"new line\". Cleanup and replacements apply to on-device dictation.",13,muted));gap(8);
+        button("Word replacements",this::showReplacements,false);
+        button("Microphone access",()->startActivity(new Intent(this,MicrophonePermissionActivity.class)),false);
+        page.addView(text("Dictation stays active through pauses. Tap Stop or the microphone again to finish.",13,muted));gap(8);
+    }
+    private void updateModel(){
+        if(modelStatus==null)return;
+        String size=SpeechModel.megabytes(SpeechModel.SIZE);
+        switch(SpeechModel.state(this)){
+            case READY->{modelStatus.setText("Speech model ready. It uses "+size+" on this phone.");modelButton.setText("Delete speech model");}
+            case DOWNLOADING->{long received=SpeechModel.received();modelStatus.setText("Downloading speech model… "+(received*100/SpeechModel.SIZE)+"% ("+SpeechModel.megabytes(received)+" of "+size+")");modelButton.setText("Cancel download");}
+            case FAILED->{modelStatus.setText(SpeechModel.failure());modelButton.setText("Download speech model ("+size+")");}
+            default->{modelStatus.setText("Speech model not downloaded.");modelButton.setText("Download speech model ("+size+")");}
+        }
+        modelButton.setContentDescription(modelButton.getText());
+    }
+    private void modelAction(){
+        String size=SpeechModel.megabytes(SpeechModel.SIZE);
+        switch(SpeechModel.state(this)){
+            case DOWNLOADING->SpeechModel.cancel();
+            case READY->new android.app.AlertDialog.Builder(this).setTitle("Delete speech model")
+                .setMessage("SoftKeys will remove the "+size+" model. Dictation will use the phone speech service until you download it again.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Delete",(dialog,which)->SpeechModel.delete(this)).show();
+            default->new android.app.AlertDialog.Builder(this).setTitle("Download speech model")
+                .setMessage("SoftKeys will download "+SpeechModel.NAME+" ("+size+") from Hugging Face and check it before use. Use Wi-Fi if your data plan is limited. The download sends no audio or text.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Download",(dialog,which)->{SpeechModel.download(this);if(!"device".equals(prefs.getString("dictationEngine","system")))((RadioButton)findViewById(200)).setChecked(true);}).show();
+        }
+    }
+    private void showReplacements(){
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(24),dp(8),dp(24),dp(8));
+        content.addView(text("Write one rule per line, such as \"soft keys => SoftKeys\". Leave the right side empty to remove a word. Rules apply to on-device dictation when cleanup is on.",14,muted));
+        EditText rules=new EditText(this);rules.setTextColor(ink);rules.setTextSize(16);rules.setGravity(Gravity.TOP);rules.setMinLines(5);rules.setHint("soft keys => SoftKeys");
+        rules.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        rules.setText(prefs.getString("dictationReplacements",""));rules.setContentDescription("Word replacement rules");
+        content.addView(rules,new LinearLayout.LayoutParams(-1,-2));
+        ScrollView scroll=new ScrollView(this);scroll.addView(content);
+        new android.app.AlertDialog.Builder(this).setTitle("Word replacements").setView(scroll).setNegativeButton("Cancel",null)
+            .setPositiveButton("Save",(dialog,which)->prefs.edit().putString("dictationReplacements",rules.getText().toString()).apply()).show();
     }
     void toggle(String label,String key,boolean fallback){Switch option=new Switch(this);option.setText(label);option.setTextColor(ink);option.setChecked(prefs.getBoolean(key,fallback));option.setOnCheckedChangeListener((button,checked)->prefs.edit().putBoolean(key,checked).apply());page.addView(option,new LinearLayout.LayoutParams(-1,dp(52)));}
     private String vibrationLabel(){return "Keypress vibration: "+KeyboardPreferences.vibrationDuration(prefs)+" ms";}

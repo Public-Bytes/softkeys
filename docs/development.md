@@ -20,8 +20,15 @@ Debug builds use a development certificate and cannot update an installed signed
 | Location | Purpose |
 | --- | --- |
 | `app/src/main/java/dev/softkeys/ios/IosKeyboardService.java` | Input connection handling, keyboard layout, drawing, touch input, cursor movement, and feedback. |
-| `app/src/main/java/dev/softkeys/ios/DictationSession.java` | User-controlled dictation session, segmented recognition, legacy requests, and cleanup. |
+| `app/src/main/java/dev/softkeys/ios/DictationEngine.java` | Interface and listener shared by both dictation engines. |
+| `app/src/main/java/dev/softkeys/ios/DictationSession.java` | Dictation through the phone speech service, with segmented recognition and legacy requests. |
 | `app/src/main/java/dev/softkeys/ios/DictationAudio.java` | Continuous PCM microphone capture and a pipe to the speech provider. No audio files. |
+| `app/src/main/java/dev/softkeys/ios/OnDeviceDictation.java` | On-device dictation. Microphone capture and decoding run on two threads, and audio stays in memory. |
+| `app/src/main/java/dev/softkeys/ios/SpeechEngine.java` | Loads the on-device recognizer, shares it between sessions, and releases it after 90 idle seconds. |
+| `app/src/main/java/dev/softkeys/ios/SpeechModel.java` | Downloads, verifies, and deletes the speech model. It is the only code that uses the network. |
+| `app/src/main/java/dev/softkeys/ios/DictationCleanup.java` | Filler removal, repeated words, spoken punctuation, word replacements, spacing, and capitals. It uses no Android classes. |
+| `app/src/main/java/com/k2fsa/sherpa/onnx/` | Java versions of the sherpa-onnx binding classes that `libsherpa-onnx-jni.so` reads through JNI. |
+| `tests/DictationCleanupTest.java` | Offline checks for `DictationCleanup`. |
 | `app/src/main/java/dev/softkeys/ios/MicrophonePermissionActivity.java` | Microphone explanation, runtime permission, and settings recovery after denial. |
 | `app/src/main/java/dev/softkeys/ios/MainActivity.java` | Keyboard setup, appearance, typing settings, and sample field. |
 | `app/src/main/java/dev/softkeys/ios/KeyboardPreferences.java` | Shared preferences, appearance migration, and hold duration bounds. |
@@ -29,7 +36,7 @@ Debug builds use a development certificate and cannot update an installed signed
 | `app/src/main/assets/lexicon.tsv` | Additions to the word list. It holds contractions, capital letters for names, extra words, and removals. |
 | `bench/` | Offline accuracy checks for `EnglishDictionary`. |
 | `app/src/main/java/dev/softkeys/ios/EmojiCatalog.java` | Emoji categories, search, variants, and recent selections. |
-| `app/src/main/assets/` | English dictionary, Unicode emoji data, and third-party licenses. |
+| `app/src/main/assets/` | English dictionary, Unicode emoji data, and third-party licenses. `licenses/NOTICE.txt` lists the speech library components and the model license. |
 | `probe/` | Separate development app with text, number, password, and search fields. |
 
 ## Input handling
@@ -72,7 +79,31 @@ The glide weights were fitted on swipes from the first 40,000 lines of that file
 
 Run the checks before and after any change to the costs, thresholds, glide weights, or `lexicon.tsv`, and compare the numbers.
 
+`tests/DictationCleanupTest.java` checks the dictation cleanup rules against fixed inputs and expected outputs. It also needs only a JDK, and GitHub Actions runs it on every build.
+
+```sh
+mkdir -p build/cleanup-test
+javac -d build/cleanup-test tests/DictationCleanupTest.java app/src/main/java/dev/softkeys/ios/DictationCleanup.java
+java -cp build/cleanup-test DictationCleanupTest
+```
+
+Add a case to the test for each change to the cleanup rules.
+
 ## Dictation
+
+The `dictationEngine` preference selects the engine when the microphone is tapped. The service creates an `OnDeviceDictation` when the value is `device`, the native library is installed, and `SpeechModel.installed` finds every model file with its expected size. Otherwise it shows a short toast and creates a `DictationSession`. Both engines report through `DictationEngine.Listener`, so the strip, Stop, Cancel, field checks, and insertion code are shared.
+
+### On-device engine
+
+`app/build.gradle` downloads `sherpa-onnx-static-link-onnxruntime-2.0.2.aar` from the sherpa-onnx GitHub release, checks its SHA-256, and copies `jni/<abi>/libsherpa-onnx-jni.so` into `build/generated/sherpa-onnx/jniLibs`. The AAR is cached in the Gradle user home under `caches/softkeys`. The AAR's Kotlin classes are not used. The classes in `com.k2fsa.sherpa.onnx` are Java versions with the same field names, because the native code reads the configuration objects by field name. Update the classes, the checksum, and the version together. Release builds include only `arm64-v8a`. Debug builds also include `x86_64` for the emulator. The library is compressed in the APK with legacy packaging, so Android extracts it on install, and `SpeechEngine.supported` checks for the extracted file.
+
+`SpeechModel` downloads four files from a pinned revision of `csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8` on Hugging Face into `noBackupFilesDir/speech/.download`. It follows redirects only to HTTPS hosts under `huggingface.co` and `hf.co`, sends a fixed user agent, and checks each file's size and SHA-256. It then renames the directory to its final name, so a partial download is never used. The total is 136,883,545 bytes.
+
+`OnDeviceDictation` records 16 kHz mono PCM with `AudioRecord` in 100 ms chunks and puts the samples in an in-memory queue. The decode thread gets the recognizer from `SpeechEngine`, which loads it on first use with two threads on most phones. The decoder feeds each chunk to an `OnlineStream`, updates the preview, and starts a new segment when the endpoint rules see 1.2 seconds of silence after speech or 20 seconds of speech. Stop ends capture. The decoder then adds one second of silence, finishes the stream, and returns the joined segments. Cancel discards the queue and interrupts the decoder. Only the decode thread touches the stream, and only one session uses the recognizer at a time. A Stop that takes more than 30 seconds to finish reports an error.
+
+On a Linux desktop, the same Java classes with the sherpa-onnx Linux JNI library decoded the model's two test recordings exactly, at about a tenth of real time with two threads. That check is not part of the repository.
+
+### Phone speech service
 
 `DictationSession` uses Android `SpeechRecognizer` on the main thread and does not start a recognition activity or switch input methods. The manifest declares `RECORD_AUDIO` and queries `android.speech.RecognitionService` for package visibility. The permission activity is not exported, and permission approval does not start recording automatically.
 
@@ -81,6 +112,8 @@ The service captures the current input connection and editor revision. Partial r
 There is no session timer. On API 33 and later, `DictationAudio` records 16 kHz mono PCM through `AudioRecord` and pipes it into `EXTRA_AUDIO_SOURCE`. The request sets `EXTRA_SEGMENTED_SESSION` to `EXTRA_AUDIO_SOURCE`, following the [Android audio source contract](https://developer.android.com/reference/android/speech/RecognizerIntent#EXTRA_AUDIO_SOURCE). Supported providers return successive segments while the audio stays open. Stop stops microphone capture and closes the stream, which tells the provider to finish. Audio is never saved to a file.
 
 Older Android versions and providers that reject or end the segmented request use repeated standard recognition requests. Final results, no-match errors, and silence timeouts start another request within the same user session. The fallback can have brief microphone gaps while the provider restarts. Silence does not finish the user session. An eight-second recovery deadline handles a legacy provider that reports an utterance boundary and then fails to return a result. A separate eight-second deadline after the user taps Stop preserves available partial text if finalization stalls. Neither deadline limits active dictation time.
+
+`DictationCleanup` runs on the final on-device transcript before insertion and, with lighter rules, on each preview. The service passes whether the cursor follows the start of a sentence, the spoken punctuation switch, and the parsed replacement rules. Cleanup is skipped when `dictationCleanup` is off, and it never runs on phone speech service results.
 
 Dictation temporarily replaces the clipboard and word suggestions above the keys. Status, Stop, and Cancel use matching visual, touch, and accessibility bounds without rebuilding the keyboard. Recognition errors appear in the strip for eight seconds and can be dismissed. The phone's recognition provider controls language availability and whether audio is processed locally or remotely.
 
@@ -100,6 +133,10 @@ Dictation temporarily replaces the clipboard and word suggestions above the keys
 | `keyPopups` | `true` | Enlarged character preview. |
 | `holdDuration` | `300` | Hold delay in milliseconds, bounded to 150 through 1000. |
 | `learnedWords` | empty | Words the user kept after a correction. At most 2000 words, never from password fields. |
+| `dictationEngine` | `system` | `device` for on-device dictation when the model is downloaded, or `system` for the phone speech service. |
+| `dictationCleanup` | `true` | Clean up on-device dictation before insertion. |
+| `spokenPunctuation` | `true` | Turn spoken punctuation words into marks during cleanup. |
+| `dictationReplacements` | empty | Word replacement rules, one per line, written as `spoken => written`. |
 
 Clipboard suggestions use `ClipDescription.getTimestamp()` to reject old items and a delayed callback to clear eligible text. Pasting, dismissing, or typing clears the in-memory text and remembers only the dismissed copy timestamp for the service lifetime. The same item is not offered again during that service session. No clipboard content or history is written to preferences or files. Clipboard updates use existing header keys with adjusted drawing, hit areas, and accessibility bounds, without rebuilding the letter rows.
 
@@ -124,4 +161,4 @@ Attach the signed APK and its checksum to a release tagged at the source commit.
 
 ## Repository contents
 
-Source, Gradle configuration, documentation, and selected sample screenshots are tracked. Build output, signing files, old copies, local emulator tools, and temporary download hosting remain outside version control. Third-party data keeps its existing notices and licenses.
+Source, Gradle configuration, documentation, and selected sample screenshots are tracked. The sherpa-onnx library and the speech model are downloaded and are not tracked. Build output, signing files, old copies, local emulator tools, and temporary download hosting remain outside version control. Third-party data keeps its existing notices and licenses.

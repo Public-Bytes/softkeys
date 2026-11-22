@@ -9,3 +9,21 @@ Emoji names and sequences: Unicode Emoji 16.0, Copyright 2024 Unicode, Inc.
 https://www.unicode.org/Public/emoji/16.0/emoji-test.txt
 Licensed under the Unicode License v3. See Unicode-3.0.txt.
 Emoji glyphs are rendered by Android using the installed system font.
+
+On-device speech recognition: sherpa-onnx 2.0.2, Copyright Xiaomi Corporation and the sherpa-onnx contributors.
+https://github.com/k2-fsa/sherpa-onnx
+Licensed under the Apache License 2.0. See Apache-2.0.txt.
+SoftKeys includes the prebuilt libsherpa-onnx-jni.so from sherpa-onnx-static-link-onnxruntime-2.0.2.aar and Java versions of its Kotlin binding classes in com.k2fsa.sherpa.onnx.
+According to the sherpa-onnx and ONNX Runtime build files, the library also links the following components:
+- ONNX Runtime, Copyright (c) Microsoft Corporation, MIT License. See MIT.txt and https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt
+- kaldi-native-fbank, kaldi-decoder, OpenFst, simple-sentencepiece, Abseil, and FlatBuffers, Apache License 2.0. See Apache-2.0.txt.
+- Protocol Buffers and RE2, BSD 3-Clause License. See BSD-3-Clause.txt.
+- Eigen, Mozilla Public License 2.0. See MPL-2.0.txt. Source: https://gitlab.com/libeigen/eigen
+- JSON for Modern C++, Copyright (c) 2013 to 2026 Niels Lohmann, MIT License. See MIT.txt.
+
+Speech model, downloaded only when you choose to in SoftKeys settings and not included in the app: NVIDIA stt_en_fastconformer_hybrid_large_streaming_multi, 480 ms streaming, as converted to int8 ONNX by the sherpa-onnx project.
+https://huggingface.co/nvidia/stt_en_fastconformer_hybrid_large_streaming_multi
+https://huggingface.co/csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8
+Licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/ . See CC-BY-4.0.txt. SoftKeys does not modify the model files.
+
+Text cleanup rules for dictation were written for SoftKeys after reading the cleanup steps in Hex, https://github.com/anomalyco/hex , MIT License. No Hex code is included.

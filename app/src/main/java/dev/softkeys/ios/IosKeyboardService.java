@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 
 public class IosKeyboardService extends InputMethodService {
     private KeyboardView keyboard;
-    private DictationSession dictation;
+    private DictationEngine dictation;
     private String dictationStatus="";
     private boolean dictationFinishing;
     private final Runnable clearDictationNotice=this::cancelDictation;
@@ -118,7 +118,8 @@ public class IosKeyboardService extends InputMethodService {
     @Override public void onStartInputView(EditorInfo info,boolean restarting){super.onStartInputView(info,restarting);palette();updateShift();if(keyboard!=null){if(keyboard.keys.isEmpty())rebuild();else keyboard.requestLayout();}if(!restarting)readClipboardSuggestion();}
     @Override public void onFinishInput(){cancelDictation();activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
     @Override public void onFinishInputView(boolean finishing){cancelDictation();decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
-    @Override public void onDestroy(){cancelDictation();if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(dictation==null&&level>=TRIM_MEMORY_UI_HIDDEN)SpeechEngine.release();}
+    @Override public void onDestroy(){cancelDictation();SpeechEngine.release();if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
     @Override public void onUpdateSelection(int os,int oe,int ns,int ne,int cs,int ce){
         super.onUpdateSelection(os,oe,ns,ne,cs,ce);
         if(ns<0||ne<0)return;
@@ -481,25 +482,46 @@ public class IosKeyboardService extends InputMethodService {
             catch(RuntimeException unavailable){Toast.makeText(this,"Allow microphone access in SoftKeys settings",Toast.LENGTH_LONG).show();}
             return;
         }
-        if(!android.speech.SpeechRecognizer.isRecognitionAvailable(this)){showDictationError("No speech recognition service is installed");return;}
+        // On-device dictation needs the downloaded model. Without it, the phone's speech service is used.
+        boolean onDevice="device".equals(prefs.getString("dictationEngine","system"));
+        boolean phoneService=android.speech.SpeechRecognizer.isRecognitionAvailable(this);
+        if(onDevice&&(!SpeechEngine.supported(this)||!SpeechModel.installed(this))){
+            if(!phoneService){showDictationError(SpeechEngine.supported(this)?"Download the on-device speech model in SoftKeys settings":"No speech recognition service is installed");return;}
+            onDevice=false;
+            Toast.makeText(this,SpeechEngine.supported(this)?"On-device model not downloaded. Using phone speech service.":"On-device dictation isn't supported here. Using phone speech service.",Toast.LENGTH_SHORT).show();
+        }
+        if(!onDevice&&!phoneService){showDictationError("No speech recognition service is installed");return;}
         dismissClipboardSuggestion();clearCorrection();glideLength=0;lastSpace=lastShift=0;
         final long token=revision;final InputConnection connection=getCurrentInputConnection();
         dictationFinishing=false;dictationStatus="Starting microphone…";
-        DictationSession session=new DictationSession(this,new DictationSession.Listener(){
-            private boolean current(DictationSession session){return dictation==session&&activeInput&&isInputViewShown()&&revision==token&&connection==getCurrentInputConnection();}
-            public void status(DictationSession session,String text,boolean finishing){
+        DictationEngine.Listener listener=new DictationEngine.Listener(){
+            private boolean current(DictationEngine session){return dictation==session&&activeInput&&isInputViewShown()&&revision==token&&connection==getCurrentInputConnection();}
+            public void status(DictationEngine session,String text,boolean finishing){
                 if(!current(session)){if(dictation==session)cancelDictation();return;}
                 dictationStatus=text;dictationFinishing=finishing;voiceChanged();
             }
-            public void result(DictationSession session,String text){
+            public void result(DictationEngine session,String text){
                 if(!current(session)){if(dictation==session)cancelDictation();return;}
                 cancelDictation();
                 if(text.isEmpty())return;
                 commitDictation(text);
             }
-            public void error(DictationSession session,String message,String retainedText){if(!current(session)){if(dictation==session)cancelDictation();return;}cancelDictation();commitDictation(retainedText);showDictationError(message);}
-        });
+            public void error(DictationEngine session,String message,String retainedText){if(!current(session)){if(dictation==session)cancelDictation();return;}cancelDictation();commitDictation(retainedText);showDictationError(message);}
+        };
+        DictationEngine session=onDevice?new OnDeviceDictation(this,listener,dictationCleanup()):new DictationSession(this,listener);
         dictation=session;voiceChanged();session.start();
+    }
+    /** Cleanup options for on-device dictation, or null when the user turned cleanup off. */
+    private DictationCleanup.Options dictationCleanup(){
+        if(!prefs.getBoolean("dictationCleanup",true))return null;
+        DictationCleanup.Options options=new DictationCleanup.Options();
+        options.spokenPunctuation=prefs.getBoolean("spokenPunctuation",true);
+        options.replacements=DictationCleanup.parseReplacements(prefs.getString("dictationReplacements",""));
+        int end=before.length();
+        while(end>0&&before.charAt(end-1)==' ')end--;
+        char previous=end==0?'\n':before.charAt(end-1);
+        options.startsSentence=!terminalEditor&&!emailField&&!uriField&&(previous=='\n'||".!?".indexOf(previous)>=0);
+        return options;
     }
     private void commitDictation(String text){
         if(text.isEmpty())return;
@@ -511,7 +533,7 @@ public class IosKeyboardService extends InputMethodService {
     private void stopDictation(){if(dictation!=null)dictation.stop();}
     private void cancelDictation(){
         boolean changed=dictation!=null||!dictationStatus.isEmpty();
-        DictationSession previous=dictation;dictation=null;dictationStatus="";dictationFinishing=false;handler.removeCallbacks(clearDictationNotice);
+        DictationEngine previous=dictation;dictation=null;dictationStatus="";dictationFinishing=false;handler.removeCallbacks(clearDictationNotice);
         if(previous!=null)previous.close();if(changed)voiceChanged();
     }
     private void showDictationError(String message){

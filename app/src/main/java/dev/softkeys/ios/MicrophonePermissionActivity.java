@@ -23,7 +23,7 @@ public class MicrophonePermissionActivity extends Activity {
         if(requesting)return;
         boolean asked=getPreferences(MODE_PRIVATE).getBoolean("asked",false);
         new AlertDialog.Builder(this).setTitle("Enable dictation")
-            .setMessage("SoftKeys needs microphone access for dictation. Your phone's speech recognition service processes audio and may send it to its provider. After granting access, return to your text field and tap the microphone to begin.")
+            .setMessage("SoftKeys needs microphone access for dictation. On-device dictation keeps audio on your phone. The phone speech service processes audio and may send it to its provider. After granting access, return to your text field and tap the microphone to begin.")
             .setPositiveButton(asked&&!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)?"Open settings":"Continue",(dialog,which)->{
                 if(asked&&!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)){
                     startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));finish();

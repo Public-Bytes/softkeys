@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.11
+
+Added on-device dictation. Choose On-device (Hex-style) in the new Dictation section of SoftKeys settings, then choose Download speech model. The model is NVIDIA's FastConformer streaming English model, in the int8 version that the sherpa-onnx project published, and SoftKeys runs it with sherpa-onnx 2.0.2. The download is about 137 MB and comes from a fixed revision on Hugging Face. SoftKeys checks the size and SHA-256 of each file, keeps the model in app storage that is excluded from backups, and shows the progress and the size in settings. Delete speech model removes it.
+
+On-device dictation keeps the same strip, Stop, and Cancel as before. Partial text appears while you speak, and speech during model loading is kept. Audio stays in memory on the phone and is never sent or saved. The app now has the `INTERNET` permission, which is used only for the model download. When On-device is selected and the model is not downloaded, a short notice appears, and SoftKeys uses the phone speech service. The phone speech service works as in 1.10 and stays the default.
+
+Added cleanup for on-device dictation. It removes "um", "uh", and similar sounds, "you know" and "like" when commas set them apart, stutters, and repeated words. It turns spoken "comma", "period", "question mark", "new line", and similar words into punctuation, fixes spacing, and capitalizes sentences. Word replacements in settings change spoken phrases into your own spelling. Switches turn off cleanup and spoken punctuation. The preview uses lighter rules.
+
+The APK includes the sherpa-onnx library for 64-bit ARM phones, so it grew from 0.4 MB to about 9.7 MB. Other phones use the phone speech service. The new licenses are listed in the app's license screen.
+
+The release build completed, and the new offline cleanup check passed 52 of 52 cases. The dictionary check in `bench/` passed. On a Linux desktop, the same Java binding classes with the sherpa-onnx Linux library transcribed the model's two English test recordings exactly. An emulator check was attempted, but the build machine has no hardware acceleration, and Android did not finish starting in 19 minutes. The settings screen, the model download, model loading, and dictation were not run on Android. On-device recognition was not tested on a physical phone, so speed, memory use, and accuracy on real speech are not verified.
+
 ## 1.10
 
 Changed the glide trail to a translucent stroke that is widest under the finger and narrows toward the older end. Only the recent part of the path is drawn. The trail is gray on the light and lavender themes and white on the dark theme.
