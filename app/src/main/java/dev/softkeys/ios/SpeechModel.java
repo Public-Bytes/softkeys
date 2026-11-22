@@ -15,7 +15,11 @@ import java.util.Locale;
 import javax.net.ssl.HttpsURLConnection;
 
 /**
- * Downloads, verifies, and deletes the on-device speech model.
+ * Downloads, verifies, and deletes the on-device speech models.
+ *
+ * There are two models. High accuracy is NVIDIA Parakeet TDT 0.6B v2, which decodes the
+ * whole recording after Done. Fast is the streaming FastConformer model from 1.11, which
+ * decodes while the user speaks. See docs/dictation-benchmark.md for the measurements.
  *
  * The download is the only network use in SoftKeys. It is a fixed HTTPS GET of public
  * model files from a pinned Hugging Face revision, started only from settings. No audio,
@@ -23,49 +27,74 @@ import javax.net.ssl.HttpsURLConnection;
  * checked against the sizes and SHA-256 digests below before they can be used.
  */
 final class SpeechModel {
-    static final String NAME="NVIDIA FastConformer streaming English, 480 ms, int8";
-    static final String SOURCE="https://huggingface.co/csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8";
-    private static final String REVISION="df8ed95e44a70924450381e610770f9d656d1e15";
-    private static final String DIRECTORY="nemo-fastconformer-en-480ms-int8-"+REVISION.substring(0,8);
-    /** Name, size in bytes, and SHA-256 of each file. */
-    private static final Object[][] FILES={
-        {"encoder.int8.onnx",131_507_603L,"100c5616929a131b5b3c8c8ab0d83aaba2cdcae163acd8d190b4e5ffa5f7d051"},
-        {"decoder.int8.onnx",3_955_864L,"4f04431988472f8c7b815f942aa6901976929c9e22353029681fcdb262da0164"},
-        {"joiner.int8.onnx",1_408_182L,"d2d8e7290a6a8245a83ed211aa0dd8cdf8effb8a7c64fe392399561111b52f30"},
-        {"tokens.txt",11_896L,"618dc110fc2213886b52e063ff42329bbdf37a266ca7705184090fa5f39f3131"},
-    };
-    static final long SIZE;
-    static {long total=0;for(Object[] file:FILES)total+=(Long)file[1];SIZE=total;}
-
+    enum Kind {STREAMING,BATCH}
     enum State {ABSENT,DOWNLOADING,READY,FAILED}
     interface Listener {void changed();}
 
+    static final SpeechModel ACCURATE=new SpeechModel("accurate","High accuracy","NVIDIA Parakeet TDT 0.6B v2, int8",Kind.BATCH,
+        "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8","84b478d541cdbf0c296a7ab5f1e20a6f8f998114","parakeet-tdt-0.6b-v2-int8-",
+        new Object[][]{
+            {"encoder.int8.onnx",652_282_309L,"92a10bd9c23936ea0566c29f963bc57c2a5df4261b6a8921c39abea66557ca8b"},
+            {"decoder.int8.onnx",7_257_753L,"4d097bae3bac5c96018d5293ba39f1b657296102b142affda40378f38b020f41"},
+            {"joiner.int8.onnx",1_739_080L,"77a29f3e5ac7d37074e0af465391b80f314015d5b97f0f90c6c7767f1d56f428"},
+            {"tokens.txt",9_384L,"ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d"},
+        });
+    static final SpeechModel FAST=new SpeechModel("fast","Fast","NVIDIA FastConformer streaming English, 480 ms, int8",Kind.STREAMING,
+        "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8","df8ed95e44a70924450381e610770f9d656d1e15","nemo-fastconformer-en-480ms-int8-",
+        new Object[][]{
+            {"encoder.int8.onnx",131_507_603L,"100c5616929a131b5b3c8c8ab0d83aaba2cdcae163acd8d190b4e5ffa5f7d051"},
+            {"decoder.int8.onnx",3_955_864L,"4f04431988472f8c7b815f942aa6901976929c9e22353029681fcdb262da0164"},
+            {"joiner.int8.onnx",1_408_182L,"d2d8e7290a6a8245a83ed211aa0dd8cdf8effb8a7c64fe392399561111b52f30"},
+            {"tokens.txt",11_896L,"618dc110fc2213886b52e063ff42329bbdf37a266ca7705184090fa5f39f3131"},
+        });
+    static final SpeechModel[] ALL={ACCURATE,FAST};
+
+    /** The value saved in the speechModel preference. */
+    final String id;
+    /** Short name for settings, such as "High accuracy". */
+    final String title;
+    /** The model's full name. */
+    final String name;
+    final Kind kind;
+    final String source;
+    final long size;
+    private final String revision,directory;
+    /** Name, size in bytes, and SHA-256 of each file. */
+    private final Object[][] files;
+
     private static final Handler main=new Handler(Looper.getMainLooper());
     private static final List<Listener> listeners=new ArrayList<>();
-    private static State state;
-    private static long received;
-    private static String failure="";
-    private static volatile boolean cancelled;
-    private static Thread worker;
+    private State state;
+    private long received;
+    private String failure="";
+    private volatile boolean cancelled;
+    private Thread worker;
 
-    private SpeechModel(){}
+    private SpeechModel(String id,String title,String name,Kind kind,String source,String revision,String prefix,Object[][] files){
+        this.id=id;this.title=title;this.name=name;this.kind=kind;this.source=source;this.revision=revision;this.files=files;
+        directory=prefix+revision.substring(0,8);
+        long total=0;for(Object[] file:files)total+=(Long)file[1];size=total;
+    }
 
-    static File directory(Context context){return new File(new File(context.getNoBackupFilesDir(),"speech"),DIRECTORY);}
-    static String path(Context context,String name){return new File(directory(context),name).getAbsolutePath();}
+    static SpeechModel byId(String id){return "fast".equals(id)?FAST:ACCURATE;}
+
+    File directory(Context context){return new File(new File(context.getNoBackupFilesDir(),"speech"),directory);}
+    String path(Context context,String name){return new File(directory(context),name).getAbsolutePath();}
+    private File temporary(Context context){return new File(new File(context.getNoBackupFilesDir(),"speech"),".download-"+id);}
 
     /** A quick check that every verified file is present with its expected size. */
-    static boolean installed(Context context){
+    boolean installed(Context context){
         File directory=directory(context);
-        for(Object[] file:FILES){File f=new File(directory,(String)file[0]);if(!f.isFile()||f.length()!=(Long)file[1])return false;}
+        for(Object[] file:files){File f=new File(directory,(String)file[0]);if(!f.isFile()||f.length()!=(Long)file[1])return false;}
         return true;
     }
 
-    static synchronized State state(Context context){
+    synchronized State state(Context context){
         if(state==null||state==State.READY||state==State.ABSENT)state=installed(context)?State.READY:State.ABSENT;
         return state;
     }
-    static synchronized long received(){return received;}
-    static synchronized String failure(){return failure;}
+    synchronized long received(){return received;}
+    synchronized String failure(){return failure;}
 
     static void addListener(Listener listener){synchronized(listeners){listeners.add(listener);}}
     static void removeListener(Listener listener){synchronized(listeners){listeners.remove(listener);}}
@@ -75,7 +104,7 @@ final class SpeechModel {
 
     static String megabytes(long bytes){return String.format(Locale.US,"%d MB",Math.round(bytes/1_000_000.0));}
 
-    static synchronized void download(Context context){
+    synchronized void download(Context context){
         Context app=context.getApplicationContext();
         if(state==State.DOWNLOADING)return;
         if(installed(app)){state=State.READY;notifyListeners();return;}
@@ -85,32 +114,34 @@ final class SpeechModel {
         notifyListeners();
     }
 
-    static synchronized void cancel(){
+    synchronized void cancel(){
         if(state!=State.DOWNLOADING)return;
         cancelled=true;
         if(worker!=null)worker.interrupt();
     }
 
-    /** Deletes the model. The keyboard falls back to the phone's speech service afterwards. */
-    static void delete(Context context){
-        synchronized(SpeechModel.class){if(state==State.DOWNLOADING)return;}
+    /** Deletes the model. The keyboard uses the other model or the phone's speech service afterwards. */
+    void delete(Context context){
+        synchronized(this){if(state==State.DOWNLOADING)return;}
         SpeechEngine.release();
         deleteTree(directory(context));
-        deleteTree(new File(new File(context.getNoBackupFilesDir(),"speech"),".download"));
-        synchronized(SpeechModel.class){state=State.ABSENT;received=0;failure="";}
+        deleteTree(temporary(context));
+        synchronized(this){state=State.ABSENT;received=0;failure="";}
         notifyListeners();
     }
 
-    private static void run(Context app){
+    private void run(Context app){
         File root=new File(app.getNoBackupFilesDir(),"speech");
-        File temporary=new File(root,".download");
+        File temporary=temporary(app);
         String error=null;
         try{
             deleteTree(temporary);
+            // 1.11 used one shared folder for unfinished downloads.
+            deleteTree(new File(root,".download"));
             if(!temporary.mkdirs()&&!temporary.isDirectory())throw new IOException("Storage is unavailable");
-            if(root.getUsableSpace()<SIZE+50_000_000L)throw new IOException("Not enough free storage. The model needs "+megabytes(SIZE)+".");
+            if(root.getUsableSpace()<size+50_000_000L)throw new IOException("Not enough free storage. The model needs "+megabytes(size)+".");
             long done=0;
-            for(Object[] file:FILES){
+            for(Object[] file:files){
                 fetch((String)file[0],(Long)file[1],(String)file[2],new File(temporary,(String)file[0]),done);
                 done+=(Long)file[1];
             }
@@ -122,16 +153,16 @@ final class SpeechModel {
         }finally{
             deleteTree(temporary);
         }
-        synchronized(SpeechModel.class){
+        synchronized(this){
             worker=null;
-            if(error==null&&installed(app)){state=State.READY;received=SIZE;}
+            if(error==null&&installed(app)){state=State.READY;received=size;}
             else{state=cancelled||error==null?State.ABSENT:State.FAILED;failure=error==null?"":error;received=0;}
         }
         notifyListeners();
     }
 
-    private static void fetch(String name,long size,String sha256,File destination,long offset) throws IOException {
-        HttpsURLConnection connection=connect(new URL(SOURCE+"/resolve/"+REVISION+"/"+name));
+    private void fetch(String name,long expected,String sha256,File destination,long offset) throws IOException {
+        HttpsURLConnection connection=connect(new URL(source+"/resolve/"+revision+"/"+name));
         try(InputStream input=connection.getInputStream();FileOutputStream output=new FileOutputStream(destination)){
             MessageDigest digest=MessageDigest.getInstance("SHA-256");
             byte[] buffer=new byte[128*1024];
@@ -140,13 +171,13 @@ final class SpeechModel {
             while((count=input.read(buffer))!=-1){
                 if(cancelled||Thread.currentThread().isInterrupted())throw new IOException("Cancelled");
                 total+=count;
-                if(total>size)throw new IOException("Unexpected size");
+                if(total>expected)throw new IOException("Unexpected size");
                 digest.update(buffer,0,count);output.write(buffer,0,count);
                 long now=System.currentTimeMillis();
-                if(now-lastNotice>250){lastNotice=now;synchronized(SpeechModel.class){received=offset+total;}notifyListeners();}
+                if(now-lastNotice>250){lastNotice=now;synchronized(this){received=offset+total;}notifyListeners();}
             }
             output.getFD().sync();
-            if(total!=size)throw new IOException("Unexpected size");
+            if(total!=expected)throw new IOException("Unexpected size");
             StringBuilder hex=new StringBuilder();
             for(byte b:digest.digest())hex.append(String.format(Locale.US,"%02x",b));
             if(!hex.toString().equals(sha256))throw new IOException("Checksum mismatch");

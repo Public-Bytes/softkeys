@@ -19,16 +19,22 @@ Debug builds use a development certificate and cannot update an installed signed
 
 | Location | Purpose |
 | --- | --- |
-| `app/src/main/java/dev/softkeys/ios/IosKeyboardService.java` | Input connection handling, keyboard layout, drawing, touch input, cursor movement, and feedback. |
-| `app/src/main/java/dev/softkeys/ios/DictationEngine.java` | Interface and listener shared by both dictation engines. |
+| `app/src/main/java/dev/softkeys/ios/IosKeyboardService.java` | Input connection handling, keyboard layout, the dictation panel, drawing, touch input, cursor movement, and feedback. |
+| `app/src/main/java/dev/softkeys/ios/DictationMode.java` | Decisions for the dictation keyboard: which fields show it, which engine runs, the timer text, and the level meter. It uses no Android classes. |
+| `app/src/main/java/dev/softkeys/ios/DictationEngine.java` | Interface and listener shared by the dictation engines. |
 | `app/src/main/java/dev/softkeys/ios/DictationSession.java` | Dictation through the phone speech service, with segmented recognition and legacy requests. |
 | `app/src/main/java/dev/softkeys/ios/DictationAudio.java` | Continuous PCM microphone capture and a pipe to the speech provider. No audio files. |
-| `app/src/main/java/dev/softkeys/ios/OnDeviceDictation.java` | On-device dictation. Microphone capture and decoding run on two threads, and audio stays in memory. |
-| `app/src/main/java/dev/softkeys/ios/SpeechEngine.java` | Loads the on-device recognizer, shares it between sessions, and releases it after 90 idle seconds. |
-| `app/src/main/java/dev/softkeys/ios/SpeechModel.java` | Downloads, verifies, and deletes the speech model. It is the only code that uses the network. |
-| `app/src/main/java/dev/softkeys/ios/DictationCleanup.java` | Filler removal, repeated words, spoken punctuation, word replacements, spacing, and capitals. It uses no Android classes. |
-| `app/src/main/java/com/k2fsa/sherpa/onnx/` | Java versions of the sherpa-onnx binding classes that `libsherpa-onnx-jni.so` reads through JNI. |
+| `app/src/main/java/dev/softkeys/ios/RecordedDictation.java` | Microphone capture and level reports shared by the two on-device engines. Audio stays in memory. |
+| `app/src/main/java/dev/softkeys/ios/BatchDictation.java` | High accuracy dictation with Parakeet TDT, decoded after Done, with long recordings split at pauses. |
+| `app/src/main/java/dev/softkeys/ios/OnDeviceDictation.java` | Fast dictation with the streaming FastConformer model, decoded while the user speaks. |
+| `app/src/main/java/dev/softkeys/ios/SpeechSegmenter.java` | Finds pauses where `BatchDictation` splits long recordings. It uses no Android classes. |
+| `app/src/main/java/dev/softkeys/ios/SpeechEngine.java` | Loads one on-device recognizer at a time, preloads it for the dictation keyboard, and releases it when idle or when Android asks for memory. |
+| `app/src/main/java/dev/softkeys/ios/SpeechModel.java` | Downloads, verifies, and deletes the two speech models. It is the only code that uses the network. |
+| `app/src/main/java/dev/softkeys/ios/DictationCleanup.java` | The Clean and Verbatim styles: filler removal, repeated words, spoken punctuation, word replacements, spacing, and capitals. It uses no Android classes. |
+| `app/src/main/java/com/k2fsa/sherpa/onnx/` | Java versions of the sherpa-onnx binding classes that `libsherpa-onnx-jni.so` reads through JNI, for streaming and offline recognizers. |
 | `tests/DictationCleanupTest.java` | Offline checks for `DictationCleanup`. |
+| `tests/DictationModeTest.java` | Offline checks for `DictationMode` and `SpeechSegmenter`. |
+| `bench/dictation/` | Host benchmark for the speech models. See [dictation-benchmark.md](dictation-benchmark.md). |
 | `app/src/main/java/dev/softkeys/ios/MicrophonePermissionActivity.java` | Microphone explanation, runtime permission, and settings recovery after denial. |
 | `app/src/main/java/dev/softkeys/ios/MainActivity.java` | Keyboard setup, appearance, typing settings, and sample field. |
 | `app/src/main/java/dev/softkeys/ios/KeyboardPreferences.java` | Shared preferences, appearance migration, and hold duration bounds. |
@@ -89,33 +95,69 @@ java -cp build/cleanup-test DictationCleanupTest
 
 Add a case to the test for each change to the cleanup rules.
 
+`tests/DictationModeTest.java` checks which fields show the dictation keyboard, the engine choice, the timer, the level meter, and where long recordings are split. GitHub Actions runs it on every build.
+
+```sh
+mkdir -p build/mode-test
+javac -d build/mode-test tests/DictationModeTest.java app/src/main/java/dev/softkeys/ios/DictationMode.java app/src/main/java/dev/softkeys/ios/SpeechSegmenter.java
+java -cp build/mode-test DictationModeTest
+```
+
+The speech model benchmark in `bench/dictation/` needs the sherpa-onnx Linux JNI library, the models, and LibriSpeech, so it does not run in GitHub Actions. [dictation-benchmark.md](dictation-benchmark.md) explains how to run it and lists the results.
+
 ## Dictation
 
-The `dictationEngine` preference selects the engine when the microphone is tapped. The service creates an `OnDeviceDictation` when the value is `device`, the native library is installed, and `SpeechModel.installed` finds every model file with its expected size. Otherwise it shows a short toast and creates a `DictationSession`. Both engines report through `DictationEngine.Listener`, so the strip, Stop, Cancel, field checks, and insertion code are shared.
+### Dictation keyboard
 
-### On-device engine
+The microphone key turns the keyboard into the dictation keyboard and starts recording. The dictation keyboard is a panel drawn by the same `KeyboardView`. It is shorter than the letter keyboard and has four rows:
 
-`app/build.gradle` downloads `sherpa-onnx-static-link-onnxruntime-2.0.2.aar` from the sherpa-onnx GitHub release, checks its SHA-256, and copies `jni/<abi>/libsherpa-onnx-jni.so` into `build/generated/sherpa-onnx/jniLibs`. The AAR is cached in the Gradle user home under `caches/softkeys`. The AAR's Kotlin classes are not used. The classes in `com.k2fsa.sherpa.onnx` are Java versions with the same field names, because the native code reads the configuration objects by field name. Update the classes, the checksum, and the version together. Release builds include only `arm64-v8a`. Debug builds also include `x86_64` for the emulator. The library is compressed in the APK with legacy packaging, so Android extracts it on install, and `SpeechEngine.supported` checks for the extracted file.
+1. A hint on the left and the Clean or Verbatim style on the right. While recording, the hint becomes a red dot and a timer.
+2. A recessed well. When idle, it holds a row of dots and the Dictate button. While recording, it holds Cancel (×), the level meter, and Done. While transcribing, Done shows a spinner. A message with a button replaces the well's contents when the microphone permission is missing, when no engine can run, or after an error.
+3. Space, Delete, and Return. They insert a plain space, delete like Backspace with the same repeat on hold, and run the editor's action or insert a line break. They do nothing while a recording is open, so dictated text lands where the user started.
+4. The keyboard button, labeled "Show keyboard" for accessibility.
 
-`SpeechModel` downloads four files from a pinned revision of `csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8` on Hugging Face into `noBackupFilesDir/speech/.download`. It follows redirects only to HTTPS hosts under `huggingface.co` and `hf.co`, sends a fixed user agent, and checks each file's size and SHA-256. It then renames the directory to its final name, so a partial download is never used. The total is 136,883,545 bytes.
+The `dictationKeyboard` preference saves whether the panel is on. `DictationMode.showPanel` shows the panel only when that preference is on and `DictationMode.fieldAllowsDictation` allows the field. Password, PIN, number, phone, and date fields, fields without predictions, and fields with `IME_FLAG_NO_PERSONALIZED_LEARNING` show the keys and never record, and the preference is not changed. `onStartInput` and `onStartInputView` recompute the panel, because the field, the microphone permission, and the downloaded models can change while the keyboard is hidden. Changing fields does not start recording. The Dictate button starts the next recording.
 
-`OnDeviceDictation` records 16 kHz mono PCM with `AudioRecord` in 100 ms chunks and puts the samples in an in-memory queue. The decode thread gets the recognizer from `SpeechEngine`, which loads it on first use with two threads on most phones. The decoder feeds each chunk to an `OnlineStream`, updates the preview, and starts a new segment when the endpoint rules see 1.2 seconds of silence after speech or 20 seconds of speech. Stop ends capture. The decoder then adds one second of silence, finishes the stream, and returns the joined segments. Cancel discards the queue and interrupts the decoder. Only the decode thread touches the stream, and only one session uses the recognizer at a time. A Stop that takes more than 30 seconds to finish reports an error.
+The keyboard button turns the preference off and shows the keys at once. A recording that is open is finished, not discarded. Its text is inserted when it is ready, and keys typed in the meantime wait in `pendingActions` and run after it, in order. This is called a handoff in the code. As in earlier releases, moving the cursor from the app, changing fields, and hiding the keyboard discard an open recording.
 
-On a Linux desktop, the same Java classes with the sherpa-onnx Linux JNI library decoded the model's two test recordings exactly, at about a tenth of real time with two threads. That check is not part of the repository.
+The level meter draws one bar every 50 ms with `DictationMode.Meter`, which rises quickly and falls slowly, and the bars scroll smoothly between steps. The on-device engines report the RMS of each 50 ms chunk. The phone speech service reports `onRmsChanged`. The panel redraws its top two rows on every frame only while a recording is open. Colors come from the current theme.
+
+### Engines
+
+`DictationMode.engine` chooses the engine for each recording. The `dictationEngine` preference selects on-device dictation or the phone speech service, and the other one is used when the preferred one cannot run. On-device dictation uses the model in the `speechModel` preference when it is downloaded, and the other downloaded model otherwise. All engines report through `DictationEngine.Listener`.
+
+| Model | Engine | Size | Decoding |
+| --- | --- | --- | --- |
+| High accuracy, NVIDIA Parakeet TDT 0.6B v2, int8 | `BatchDictation` | 661,288,526 bytes | The whole recording after Done, with an offline transducer |
+| Fast, NVIDIA FastConformer streaming, 480 ms, int8 | `OnDeviceDictation` | 136,883,545 bytes | Streaming while the user speaks |
+
+Both on-device engines extend `RecordedDictation`. It records 16 kHz mono PCM with `AudioRecord` in 50 ms chunks into an in-memory queue as soon as recording starts, before the model is loaded, and reports the level of each chunk. Audio is never written to a file.
+
+`BatchDictation` keeps the audio in memory. `SpeechSegmenter` looks for a pause of 300 ms after 20 seconds of audio, or splits at the quietest 50 ms of the last 5 seconds when a part reaches 28 seconds. Each finished part is decoded while the user keeps talking, so Done waits only for the last part. The last part gets 0.25 seconds of added silence. The recognizer loads on its own thread, and the decode thread returns it to `SpeechEngine` whether the session finishes, fails, or is cancelled during loading. A Done that takes more than 60 seconds to finish reports an error.
+
+`OnDeviceDictation` feeds each chunk to an `OnlineStream` and starts a new segment when the endpoint rules see 1.2 seconds of silence after speech or 20 seconds of speech. Done ends capture. The decoder then adds one second of silence, finishes the stream, and returns the joined segments. A Done that takes more than 30 seconds reports an error.
+
+`SpeechEngine` holds one loaded recognizer, either kind. When the panel appears with an on-device engine, `SpeechEngine.preload` starts loading the model on a background thread, and `SpeechEngine.keep` stops the idle timer until the keyboard is hidden. A session that starts during loading waits for the load. Otherwise the recognizer is released 90 seconds after the last session, when the model is deleted, or when `onTrimMemory` reports `TRIM_MEMORY_UI_HIDDEN` or higher while no session is open. The recognizers use half the processor cores, at most four.
+
+### Native library and models
+
+`app/build.gradle` downloads `sherpa-onnx-static-link-onnxruntime-2.0.2.aar` from the sherpa-onnx GitHub release, checks its SHA-256, and copies `jni/<abi>/libsherpa-onnx-jni.so` into `build/generated/sherpa-onnx/jniLibs`. The AAR is cached in the Gradle user home under `caches/softkeys`. The AAR's Kotlin classes are not used. The classes in `com.k2fsa.sherpa.onnx` are Java versions with the same field names, because the native code reads the configuration objects by field name. The offline configuration includes the classes for model families that SoftKeys does not use, because `offline-recognizer.cc` reads all of them. Update the classes, the checksum, and the version together. Release builds include only `arm64-v8a`. Debug builds also include `x86_64` for the emulator. The library is compressed in the APK with legacy packaging, so Android extracts it on install, and `SpeechEngine.supported` checks for the extracted file.
+
+`SpeechModel` downloads four files for each model from a pinned revision on Hugging Face into `noBackupFilesDir/speech/.download-<id>`. It follows redirects only to HTTPS hosts under `huggingface.co` and `hf.co`, sends a fixed user agent, and checks each file's size and SHA-256. It then renames the directory to its final name, so a partial download is never used. The revisions are `84b478d541cdbf0c296a7ab5f1e20a6f8f998114` of `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` and `df8ed95e44a70924450381e610770f9d656d1e15` of `csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8`. The digest of each `tokens.txt` was computed from the downloaded file, because Hugging Face lists digests only for large files.
+
+### Text styles
+
+The service applies the style to on-device text when it inserts it, so a style change during a recording applies to that recording. The `dictationCleanup` preference holds the style, and the panel's style button and settings both change it. Clean runs `DictationCleanup.clean`. Verbatim runs `DictationCleanup.verbatim`, which keeps every word and fixes only spacing and capitals. Both lowercase an ordinary capitalized first word when the cursor is in the middle of a sentence, because Parakeet starts every recording with a capital. The service passes whether the cursor follows the start of a sentence, the spoken punctuation switch, and the parsed replacement rules. Phone speech service text is inserted as the provider returns it.
 
 ### Phone speech service
 
 `DictationSession` uses Android `SpeechRecognizer` on the main thread and does not start a recognition activity or switch input methods. The manifest declares `RECORD_AUDIO` and queries `android.speech.RecognitionService` for package visibility. The permission activity is not exported, and permission approval does not start recording automatically.
 
-The service captures the current input connection and editor revision. Partial results appear only in the existing suggestion strip. Stop commits the accumulated transcript once if the same editor remains active. New input, cursor movement, keyboard dismissal, or service destruction cancels and destroys the recognizer. Cancellation discards the transcript, and late callbacks from old requests are ignored. Completed segments are retained if a microphone or provider error interrupts the session.
+The service captures the current input connection and editor revision. Done commits the accumulated transcript once if the same editor remains active. Cursor movement from the app, keyboard dismissal, changing fields, or service destruction cancels and destroys the recognizer. Cancellation discards the transcript, and late callbacks from old requests are ignored. Completed segments are retained if a microphone or provider error interrupts the session.
 
-There is no session timer. On API 33 and later, `DictationAudio` records 16 kHz mono PCM through `AudioRecord` and pipes it into `EXTRA_AUDIO_SOURCE`. The request sets `EXTRA_SEGMENTED_SESSION` to `EXTRA_AUDIO_SOURCE`, following the [Android audio source contract](https://developer.android.com/reference/android/speech/RecognizerIntent#EXTRA_AUDIO_SOURCE). Supported providers return successive segments while the audio stays open. Stop stops microphone capture and closes the stream, which tells the provider to finish. Audio is never saved to a file.
+There is no session timer. On API 33 and later, `DictationAudio` records 16 kHz mono PCM through `AudioRecord` and pipes it into `EXTRA_AUDIO_SOURCE`. The request sets `EXTRA_SEGMENTED_SESSION` to `EXTRA_AUDIO_SOURCE`, following the [Android audio source contract](https://developer.android.com/reference/android/speech/RecognizerIntent#EXTRA_AUDIO_SOURCE). Supported providers return successive segments while the audio stays open. Done stops microphone capture and closes the stream, which tells the provider to finish. Audio is never saved to a file.
 
-Older Android versions and providers that reject or end the segmented request use repeated standard recognition requests. Final results, no-match errors, and silence timeouts start another request within the same user session. The fallback can have brief microphone gaps while the provider restarts. Silence does not finish the user session. An eight-second recovery deadline handles a legacy provider that reports an utterance boundary and then fails to return a result. A separate eight-second deadline after the user taps Stop preserves available partial text if finalization stalls. Neither deadline limits active dictation time.
-
-`DictationCleanup` runs on the final on-device transcript before insertion and, with lighter rules, on each preview. The service passes whether the cursor follows the start of a sentence, the spoken punctuation switch, and the parsed replacement rules. Cleanup is skipped when `dictationCleanup` is off, and it never runs on phone speech service results.
-
-Dictation temporarily replaces the clipboard and word suggestions above the keys. Status, Stop, and Cancel use matching visual, touch, and accessibility bounds without rebuilding the keyboard. Recognition errors appear in the strip for eight seconds and can be dismissed. The phone's recognition provider controls language availability and whether audio is processed locally or remotely.
+Older Android versions and providers that reject or end the segmented request use repeated standard recognition requests. Final results, no-match errors, and silence timeouts start another request within the same user session. The fallback can have brief microphone gaps while the provider restarts. Silence does not finish the user session. An eight-second recovery deadline handles a legacy provider that reports an utterance boundary and then fails to return a result. A separate eight-second deadline after the user taps Done preserves available partial text if finalization stalls. Neither deadline limits active dictation time. The phone's recognition provider controls language availability and whether audio is processed locally or remotely.
 
 ## Preferences
 
@@ -133,9 +175,11 @@ Dictation temporarily replaces the clipboard and word suggestions above the keys
 | `keyPopups` | `true` | Enlarged character preview. |
 | `holdDuration` | `300` | Hold delay in milliseconds, bounded to 150 through 1000. |
 | `learnedWords` | empty | Words the user kept after a correction. At most 2000 words, never from password fields. |
-| `dictationEngine` | `system` | `device` for on-device dictation when the model is downloaded, or `system` for the phone speech service. |
-| `dictationCleanup` | `true` | Clean up on-device dictation before insertion. |
-| `spokenPunctuation` | `true` | Turn spoken punctuation words into marks during cleanup. |
+| `dictationKeyboard` | `false` | Show the dictation keyboard in place of the keys. The microphone key turns it on and the keyboard button turns it off. |
+| `dictationEngine` | `system` | `device` for on-device dictation when a model is downloaded, or `system` for the phone speech service. |
+| `speechModel` | `accurate` | `accurate` for Parakeet TDT or `fast` for the streaming FastConformer model, when both are downloaded. |
+| `dictationCleanup` | `true` | The style for on-device dictation. `true` is Clean and `false` is Verbatim. |
+| `spokenPunctuation` | `true` | Turn spoken punctuation words into marks in the Clean style. |
 | `dictationReplacements` | empty | Word replacement rules, one per line, written as `spoken => written`. |
 
 Clipboard suggestions use `ClipDescription.getTimestamp()` to reject old items and a delayed callback to clear eligible text. Pasting, dismissing, or typing clears the in-memory text and remembers only the dismissed copy timestamp for the service lifetime. The same item is not offered again during that service session. No clipboard content or history is written to preferences or files. Clipboard updates use existing header keys with adjusted drawing, hit areas, and accessibility bounds, without rebuilding the letter rows.
@@ -161,4 +205,4 @@ Attach the signed APK and its checksum to a release tagged at the source commit.
 
 ## Repository contents
 
-Source, Gradle configuration, documentation, and selected sample screenshots are tracked. The sherpa-onnx library and the speech model are downloaded and are not tracked. Build output, signing files, old copies, local emulator tools, and temporary download hosting remain outside version control. Third-party data keeps its existing notices and licenses.
+Source, Gradle configuration, documentation, and selected sample screenshots are tracked. The sherpa-onnx library, the speech models, and the benchmark recordings are downloaded and are not tracked. Build output, signing files, old copies, local emulator tools, and temporary download hosting remain outside version control. Third-party data keeps its existing notices and licenses.

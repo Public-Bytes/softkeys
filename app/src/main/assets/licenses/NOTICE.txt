@@ -21,9 +21,16 @@ According to the sherpa-onnx and ONNX Runtime build files, the library also link
 - Eigen, Mozilla Public License 2.0. See MPL-2.0.txt. Source: https://gitlab.com/libeigen/eigen
 - JSON for Modern C++, Copyright (c) 2013 to 2026 Niels Lohmann, MIT License. See MIT.txt.
 
-Speech model, downloaded only when you choose to in SoftKeys settings and not included in the app: NVIDIA stt_en_fastconformer_hybrid_large_streaming_multi, 480 ms streaming, as converted to int8 ONNX by the sherpa-onnx project.
+Speech models, downloaded only when you choose to in SoftKeys settings and not included in the app.
+
+High accuracy model: NVIDIA parakeet-tdt-0.6b-v2, as converted to int8 ONNX by the sherpa-onnx project.
+https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+Licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/ . See CC-BY-4.0.txt. SoftKeys does not modify the model files.
+
+Fast model: NVIDIA stt_en_fastconformer_hybrid_large_streaming_multi, 480 ms streaming, as converted to int8 ONNX by the sherpa-onnx project.
 https://huggingface.co/nvidia/stt_en_fastconformer_hybrid_large_streaming_multi
 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8
 Licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/ . See CC-BY-4.0.txt. SoftKeys does not modify the model files.
 
-Text cleanup rules for dictation were written for SoftKeys after reading the cleanup steps in Hex, https://github.com/anomalyco/hex , MIT License. No Hex code is included.
+Text cleanup rules and the layout of the dictation keyboard were written for SoftKeys after reading the cleanup steps and keyboard design in Hex, https://github.com/anomalyco/hex , MIT License. No Hex code is included.

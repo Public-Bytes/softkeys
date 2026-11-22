@@ -66,25 +66,34 @@ public final class DictationCleanup {
     }
 
     /** Full cleanup for the text that will be inserted. */
-    public static String clean(String raw,Options options){return run(raw,options,false);}
+    public static String clean(String raw,Options options){return run(raw,options,false,false);}
+
+    /**
+     * Verbatim style. The words stay as the model wrote them, with no filler removal, repeat
+     * removal, spoken punctuation, or replacements. Only spacing around punctuation and
+     * capital letters at the start of sentences and for "I" are fixed.
+     */
+    public static String verbatim(String raw,Options options){return run(raw,options,false,true);}
 
     /**
      * Lighter cleanup for the live preview. It skips phrase fillers and repeated phrases,
      * because the last words of a partial result can still change. New lines show as spaces.
      */
-    public static String preview(String raw,Options options){return run(raw,options,true).replace('\n',' ').replaceAll(" {2,}"," ").trim();}
+    public static String preview(String raw,Options options){return run(raw,options,true,false).replace('\n',' ').replaceAll(" {2,}"," ").trim();}
 
-    private static String run(String raw,Options options,boolean light){
+    private static String run(String raw,Options options,boolean light,boolean verbatim){
         if(raw==null)return "";
         String text=raw.trim();
         if(text.isEmpty())return "";
         // Some models write only capital letters. Lowercase them so capitalization can be rebuilt.
         if(text.chars().anyMatch(Character::isLetter)&&text.chars().noneMatch(Character::isLowerCase))text=text.toLowerCase(Locale.ROOT);
         List<String> tokens=tokenize(text);
-        if(options.spokenPunctuation)spokenPunctuation(tokens);
-        removeFillers(tokens,light);
-        collapseRepeats(tokens,light);
-        replace(tokens,options.replacements);
+        if(!verbatim){
+            if(options.spokenPunctuation)spokenPunctuation(tokens);
+            removeFillers(tokens,light);
+            collapseRepeats(tokens,light);
+            replace(tokens,options.replacements);
+        }
         return join(tokens,options.startsSentence);
     }
 
@@ -243,6 +252,9 @@ public final class DictationCleanup {
             }
             String word=pronounI(token);
             if(capital){word=capitalize(word);capital=false;}
+            // Models that write capitals start every recording with one. In the middle of a
+            // sentence, an ordinary capitalized first word goes back to lowercase.
+            else if(last==null&&!startsSentence)word=decapitalize(word);
             if(last!=null&&!newline(last))out.append(' ');
             out.append(word);last=word;
         }
@@ -254,6 +266,14 @@ public final class DictationCleanup {
         if(lower.equals("i")||lower.startsWith("i'")&&(lower.equals("i'm")||lower.equals("i've")||lower.equals("i'll")||lower.equals("i'd")))
             return "I"+token.substring(1);
         return token;
+    }
+
+    /** Lowercases a word such as "The" or "So", but not "I", "iPhone", "NASA", or "McDonald". */
+    private static String decapitalize(String word){
+        if(word.isEmpty()||!Character.isUpperCase(word.charAt(0))||word.substring(1).chars().anyMatch(Character::isUpperCase))return word;
+        String lower=lower(word).replace('’','\'');
+        if(lower.equals("i")||lower.startsWith("i'"))return word;
+        return Character.toLowerCase(word.charAt(0))+word.substring(1);
     }
 
     /** Uppercases the first letter unless the word already has capitals, such as "iPhone". */

@@ -16,7 +16,7 @@ public class MainActivity extends Activity {
     private TextView status;
     private EditText sample;
     private TextView vibrationSetting;
-    private TextView modelStatus,modelButton;
+    private final TextView[] modelStatus=new TextView[SpeechModel.ALL.length],modelButton=new TextView[SpeechModel.ALL.length];
     private final SpeechModel.Listener modelListener=this::updateModel;
     private Vibrator vibrator;
     private android.content.SharedPreferences prefs;
@@ -109,47 +109,79 @@ public class MainActivity extends Activity {
     }
     private void dictationSettings(){
         TextView title=text("Dictation",19,ink);title.setTypeface(null,Typeface.BOLD);page.addView(title);gap(8);
+        page.addView(text("Tap the microphone on the keys to switch to the dictation keyboard, which has no letter keys. Tap Dictate to record and Done to insert the text. Tap the keyboard button to bring the keys back. SoftKeys keeps showing the one you used last. Password, number, and private fields always show the keys.",13,muted));gap(8);
         RadioGroup engines=new RadioGroup(this);engines.setOrientation(LinearLayout.VERTICAL);
         String[] names={"On-device (Hex-style)","Phone speech service"};String[] values={"device","system"};
         String engine=prefs.getString("dictationEngine","system");
         for(int i=0;i<names.length;i++){RadioButton radio=new RadioButton(this);radio.setText(names[i]);radio.setTextColor(ink);radio.setId(200+i);engines.addView(radio,new RadioGroup.LayoutParams(-1,dp(44)));if(values[i].equals(engine))radio.setChecked(true);}
         engines.setOnCheckedChangeListener((g,id)->prefs.edit().putString("dictationEngine",values[id-200]).apply());page.addView(engines);
-        page.addView(text("On-device dictation uses a speech model that SoftKeys downloads once. Speech is recognized on this phone, and audio is never sent or saved. Until the model is downloaded, SoftKeys uses the phone speech service, which may send audio to its provider.",13,muted));gap(8);
-        modelStatus=text("",14,ink);page.addView(modelStatus);gap(6);
-        modelButton=button("",this::modelAction,false);
-        toggle("Clean up dictated text","dictationCleanup",true);
+        page.addView(text("On-device dictation uses a speech model that SoftKeys downloads once. Speech is recognized on this phone, and audio is never sent or saved. Until a model is downloaded, SoftKeys uses the phone speech service, which may send audio to its provider.",13,muted));gap(12);
+        TextView models=text("Speech model",16,ink);models.setTypeface(null,Typeface.BOLD);page.addView(models);gap(4);
+        String[] details={
+            "Recommended. NVIDIA Parakeet TDT 0.6B v2 makes the fewest mistakes and adds punctuation and capitals. It transcribes after you tap Done, in about a second for a sentence on a recent phone. It uses about 0.9 GB of memory while loaded and up to about 1.4 GB while transcribing.",
+            "NVIDIA FastConformer streaming. It needs less storage and memory and finishes almost instantly, but it makes more mistakes and writes no punctuation."};
+        RadioGroup choice=new RadioGroup(this);choice.setOrientation(LinearLayout.VERTICAL);
+        String chosen=SpeechModel.byId(prefs.getString("speechModel","accurate")).id;
+        for(int i=0;i<SpeechModel.ALL.length;i++){
+            SpeechModel model=SpeechModel.ALL[i];
+            RadioButton radio=new RadioButton(this);radio.setText(model.title+" ("+SpeechModel.megabytes(model.size)+")");radio.setTextColor(ink);radio.setId(300+i);
+            choice.addView(radio,new RadioGroup.LayoutParams(-1,dp(44)));if(model.id.equals(chosen))radio.setChecked(true);
+            TextView detail=text(details[i],13,muted);detail.setPadding(dp(32),0,0,dp(4));choice.addView(detail);
+            modelStatus[i]=text("",14,ink);modelStatus[i].setPadding(dp(32),dp(2),0,dp(6));choice.addView(modelStatus[i]);
+            final int index=i;
+            modelButton[i]=text("",15,ink);modelButton[i].setTypeface(null,Typeface.BOLD);modelButton[i].setGravity(Gravity.CENTER);modelButton[i].setBackground(bg(0xffe8e4ee,14));
+            modelButton[i].setOnClickListener(v->modelAction(index));
+            RadioGroup.LayoutParams lp=new RadioGroup.LayoutParams(-1,dp(48));lp.leftMargin=dp(32);lp.bottomMargin=dp(10);choice.addView(modelButton[i],lp);
+        }
+        choice.setOnCheckedChangeListener((g,id)->{if(id>=300)prefs.edit().putString("speechModel",SpeechModel.ALL[id-300].id).apply();});
+        page.addView(choice);gap(8);
+        TextView style=text("Style",16,ink);style.setTypeface(null,Typeface.BOLD);page.addView(style);gap(4);
+        RadioGroup styles=new RadioGroup(this);styles.setOrientation(LinearLayout.VERTICAL);
+        String[] styleNames={"Clean","Verbatim"};
+        for(int i=0;i<styleNames.length;i++){RadioButton radio=new RadioButton(this);radio.setText(styleNames[i]);radio.setTextColor(ink);radio.setId(400+i);styles.addView(radio,new RadioGroup.LayoutParams(-1,dp(44)));}
+        ((RadioButton)styles.getChildAt(prefs.getBoolean("dictationCleanup",true)?0:1)).setChecked(true);
+        styles.setOnCheckedChangeListener((g,id)->prefs.edit().putBoolean("dictationCleanup",id==400).apply());page.addView(styles);
+        page.addView(text("Clean removes um and uh, stutters, and repeated words, applies spoken punctuation and your word replacements, fixes spacing, and capitalizes sentences. Verbatim keeps every word and fixes only spacing and capitals. You can also switch the style on the dictation keyboard. Styles apply to on-device dictation.",13,muted));gap(8);
         toggle("Spoken punctuation","spokenPunctuation",true);
-        page.addView(text("Cleanup removes um and uh, stutters, and repeated words, fixes spacing, and capitalizes sentences. With spoken punctuation, say \"comma\", \"period\", \"question mark\", or \"new line\". Cleanup and replacements apply to on-device dictation.",13,muted));gap(8);
+        page.addView(text("With spoken punctuation in the Clean style, say \"comma\", \"period\", \"question mark\", or \"new line\".",13,muted));gap(8);
         button("Word replacements",this::showReplacements,false);
         button("Microphone access",()->startActivity(new Intent(this,MicrophonePermissionActivity.class)),false);
-        page.addView(text("Dictation stays active through pauses. Tap Stop or the microphone again to finish.",13,muted));gap(8);
+        page.addView(text("Dictation stays active through pauses until you tap Done. There is no time limit.",13,muted));gap(8);
     }
     private void updateModel(){
-        if(modelStatus==null)return;
-        String size=SpeechModel.megabytes(SpeechModel.SIZE);
-        switch(SpeechModel.state(this)){
-            case READY->{modelStatus.setText("Speech model ready. It uses "+size+" on this phone.");modelButton.setText("Delete speech model");}
-            case DOWNLOADING->{long received=SpeechModel.received();modelStatus.setText("Downloading speech model… "+(received*100/SpeechModel.SIZE)+"% ("+SpeechModel.megabytes(received)+" of "+size+")");modelButton.setText("Cancel download");}
-            case FAILED->{modelStatus.setText(SpeechModel.failure());modelButton.setText("Download speech model ("+size+")");}
-            default->{modelStatus.setText("Speech model not downloaded.");modelButton.setText("Download speech model ("+size+")");}
+        for(int i=0;i<SpeechModel.ALL.length;i++){
+            if(modelStatus[i]==null)continue;
+            SpeechModel model=SpeechModel.ALL[i];
+            String size=SpeechModel.megabytes(model.size);
+            switch(model.state(this)){
+                case READY->{modelStatus[i].setText("Downloaded. It uses "+size+" on this phone.");modelButton[i].setText("Delete");}
+                case DOWNLOADING->{long received=model.received();modelStatus[i].setText("Downloading… "+(received*100/model.size)+"% ("+SpeechModel.megabytes(received)+" of "+size+")");modelButton[i].setText("Cancel download");}
+                case FAILED->{modelStatus[i].setText(model.failure());modelButton[i].setText("Download ("+size+")");}
+                default->{modelStatus[i].setText("Not downloaded.");modelButton[i].setText("Download ("+size+")");}
+            }
+            modelButton[i].setContentDescription(modelButton[i].getText()+", "+model.title+" model");
         }
-        modelButton.setContentDescription(modelButton.getText());
     }
-    private void modelAction(){
-        String size=SpeechModel.megabytes(SpeechModel.SIZE);
-        switch(SpeechModel.state(this)){
-            case DOWNLOADING->SpeechModel.cancel();
-            case READY->new android.app.AlertDialog.Builder(this).setTitle("Delete speech model")
-                .setMessage("SoftKeys will remove the "+size+" model. Dictation will use the phone speech service until you download it again.")
-                .setNegativeButton("Cancel",null).setPositiveButton("Delete",(dialog,which)->SpeechModel.delete(this)).show();
-            default->new android.app.AlertDialog.Builder(this).setTitle("Download speech model")
-                .setMessage("SoftKeys will download "+SpeechModel.NAME+" ("+size+") from Hugging Face and check it before use. Use Wi-Fi if your data plan is limited. The download sends no audio or text.")
-                .setNegativeButton("Cancel",null).setPositiveButton("Download",(dialog,which)->{SpeechModel.download(this);if(!"device".equals(prefs.getString("dictationEngine","system")))((RadioButton)findViewById(200)).setChecked(true);}).show();
+    private void modelAction(int index){
+        SpeechModel model=SpeechModel.ALL[index];
+        String size=SpeechModel.megabytes(model.size);
+        switch(model.state(this)){
+            case DOWNLOADING->model.cancel();
+            case READY->new android.app.AlertDialog.Builder(this).setTitle("Delete "+model.title.toLowerCase(java.util.Locale.US)+" model")
+                .setMessage("SoftKeys will remove the "+size+" model. Dictation will use the other downloaded model or the phone speech service until you download it again.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Delete",(dialog,which)->model.delete(this)).show();
+            default->new android.app.AlertDialog.Builder(this).setTitle("Download "+model.title.toLowerCase(java.util.Locale.US)+" model")
+                .setMessage("SoftKeys will download "+model.name+" ("+size+") from Hugging Face and check it before use. Use Wi-Fi if your data plan is limited. The download sends no audio or text.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Download",(dialog,which)->{
+                    model.download(this);
+                    if(!"device".equals(prefs.getString("dictationEngine","system")))((RadioButton)findViewById(200)).setChecked(true);
+                    ((RadioButton)findViewById(300+index)).setChecked(true);
+                }).show();
         }
     }
     private void showReplacements(){
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(24),dp(8),dp(24),dp(8));
-        content.addView(text("Write one rule per line, such as \"soft keys => SoftKeys\". Leave the right side empty to remove a word. Rules apply to on-device dictation when cleanup is on.",14,muted));
+        content.addView(text("Write one rule per line, such as \"soft keys => SoftKeys\". Leave the right side empty to remove a word. Rules apply to on-device dictation in the Clean style.",14,muted));
         EditText rules=new EditText(this);rules.setTextColor(ink);rules.setTextSize(16);rules.setGravity(Gravity.TOP);rules.setMinLines(5);rules.setHint("soft keys => SoftKeys");
         rules.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         rules.setText(prefs.getString("dictationReplacements",""));rules.setContentDescription("Word replacement rules");

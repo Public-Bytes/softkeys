@@ -4,6 +4,9 @@ package dev.softkeys.ios;
 interface DictationEngine {
     interface Listener {
         void status(DictationEngine session,String text,boolean finishing);
+        /** The microphone level from 0 to 1, several times a second while recording. */
+        void level(DictationEngine session,float level);
+        /** The transcript as the recognizer wrote it. The keyboard applies cleanup. */
         void result(DictationEngine session,String text);
         void error(DictationEngine session,String message,String retainedText);
     }
@@ -12,4 +15,6 @@ interface DictationEngine {
     void stop();
     /** Discards the session without a callback. */
     void close();
+    /** True when the transcript comes from an on-device model, so the keyboard's cleanup applies. */
+    default boolean onDevice(){return false;}
 }

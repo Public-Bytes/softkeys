@@ -65,6 +65,24 @@ public final class DictationCleanupTest {
         checkWith("and then we left",false,true,"","and then we left");
         checkWith("um and then we left",false,true,"","and then we left");
 
+        // Punctuated, capitalized text from the High accuracy model.
+        check("Um, so I think, uh, we should go.","So I think we should go.");
+        check("I I think the plan works. Thanks.","I think the plan works. Thanks.");
+        check("Hello comma how are you question mark","Hello, how are you?");
+        checkWith("The meeting moved to Friday.",false,true,"","the meeting moved to Friday.");
+        checkWith("So we left early.",false,true,"","so we left early.");
+        checkWith("I think so.",false,true,"","I think so.");
+        checkWith("I'm late.",false,true,"","I'm late.");
+        checkWith("iPhone sales rose.",false,true,"","iPhone sales rose.");
+        checkWith("NASA launched it.",false,true,"","NASA launched it.");
+
+        // Verbatim keeps every word and fixes only spacing and capitals.
+        verbatim("um i think i i should go comma ok",true,"Um I think I I should go comma ok");
+        verbatim("Um, I think, uh, we should go.",true,"Um, I think, uh, we should go.");
+        verbatim("hello , world . and more",true,"Hello, world. And more");
+        verbatim("The plan works.",false,"the plan works.");
+        verbatim("soft keys is basically fine",true,"Soft keys is basically fine");
+
         // Word replacements.
         String rules="# my words\nsoft keys => SoftKeys\nI phone -> iPhone\ngonna = going to\nbasically =>\nbad line\n= nothing\n";
         List<String[]> parsed=DictationCleanup.parseReplacements(rules);
@@ -87,6 +105,12 @@ public final class DictationCleanupTest {
     }
 
     private static void check(String input,String expected){checkWith(input,true,true,"",expected);}
+    private static void verbatim(String input,boolean startsSentence,String expected){
+        DictationCleanup.Options options=new DictationCleanup.Options();
+        options.startsSentence=startsSentence;
+        options.replacements=DictationCleanup.parseReplacements("soft keys => SoftKeys\nbasically =>");
+        expect("verbatim: "+input,input,DictationCleanup.verbatim(input,options),expected);
+    }
     private static void checkWith(String input,boolean startsSentence,boolean spokenPunctuation,String rules,String expected){
         DictationCleanup.Options options=new DictationCleanup.Options();
         options.startsSentence=startsSentence;
