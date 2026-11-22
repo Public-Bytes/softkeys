@@ -146,7 +146,7 @@ Both on-device engines extend `RecordedDictation`. It records 16 kHz mono PCM wi
 
 ### Text styles
 
-The service applies the style to on-device text when it inserts it, so a style change during a recording applies to that recording. The `dictationCleanup` preference holds the style, and the panel's style button and settings both change it. Clean runs `DictationCleanup.clean`. Verbatim runs `DictationCleanup.verbatim`, which keeps every word and fixes only spacing and capitals. Both lowercase an ordinary capitalized first word when the cursor is in the middle of a sentence, because Parakeet starts every recording with a capital. The service passes whether the cursor follows the start of a sentence, the spoken punctuation switch, and the parsed replacement rules. Phone speech service text is inserted as the provider returns it.
+The service applies the style to on-device text when it inserts it, so a style change during a recording applies to that recording. The `dictationCleanup` preference holds the style, and the panel's style button and settings both change it. Clean runs `DictationCleanup.clean`. Verbatim runs `DictationCleanup.verbatim`, which keeps every word and fixes only spacing and capitals. Both lowercase an ordinary capitalized first word when the cursor is in the middle of a sentence, because Parakeet starts every recording with a capital. The service passes whether the cursor follows the start of a sentence, the spoken punctuation switch, the parsed replacement rules, the vocabulary from `DictationCleanup.parseVocabulary`, and `EnglishDictionary.contains` as the test for known words. After the exact rules, Clean replaces any unknown word of 4 or more letters whose sound key is within one edit of a vocabulary word's key, or two edits for a key of 7 or more symbols. `DictationCleanup.soundKey` builds the key, e.g. "Joksich", "Yoxich", and "Yocksage" all give the key of "Yaksich". A lowercase replacement gets a capital when the word it replaces had one. Phone speech service text is inserted as the provider returns it.
 
 ### Phone speech service
 
@@ -179,7 +179,7 @@ Older Android versions and providers that reject or end the segmented request us
 | `speechModel` | `accurate` | `accurate` for Parakeet TDT or `fast` for the streaming FastConformer model, when both are downloaded. |
 | `dictationCleanup` | `true` | The style for on-device dictation. `true` is Clean and `false` is Verbatim. |
 | `spokenPunctuation` | `true` | Turn spoken punctuation words into marks in the Clean style. |
-| `dictationReplacements` | empty | Word replacement rules, one per line, written as `spoken => written`. |
+| `dictationReplacements` | empty | Word replacement rules, one per line, written as `spoken => written`. A line with one word adds that word to the sound matching vocabulary. |
 
 Clipboard suggestions use `ClipDescription.getTimestamp()` to reject old items and a delayed callback to clear eligible text. Pasting, dismissing, or typing clears the in-memory text and remembers only the dismissed copy timestamp for the service lifetime. The same item is not offered again during that service session. No clipboard content or history is written to preferences or files. Clipboard updates use existing header keys with adjusted drawing, hit areas, and accessibility bounds, without rebuilding the letter rows.
 

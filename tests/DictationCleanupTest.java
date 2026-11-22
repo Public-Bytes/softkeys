@@ -92,6 +92,19 @@ public final class DictationCleanupTest {
         checkWith("we're gonna win basically",true,true,rules,"We're going to win");
         checkWith("SOFT KEYS",true,true,rules,"SoftKeys");
 
+        // Sound matching. One rule teaches the spelling, and other spellings that sound
+        // the same are fixed. Known English words are never changed.
+        String name="joksich => yaksich\nLilly\n";
+        expect("vocabulary",String.join(",",DictationCleanup.parseVocabulary(name)),"yaksich,Lilly");
+        sounds("Yoxich. Joseph Yarsich. Joseph Allen Yocksage. Joseph Alan Joksich the First.",name,
+            "Yaksich. Joseph Yaksich. Joseph Allen Yaksich. Joseph Alan Yaksich the First.");
+        sounds("Nicholas Yaksich. Joseph Jarkswich. Jakzich, Jahzich, Yaksitch.",name,
+            "Nicholas Yaksich. Joseph Yaksich. Yaksich, Yaksich, Yaksich.");
+        sounds("i saw a lily and a jack and the yacht sank",name,"I saw a lily and a jack and the yacht sank");
+        sounds("tell lilleigh hi",name,"Tell Lilly hi");
+        sounds("my friend jax said yes",name,"My friend jax said yes");
+        checkWith("Joseph Joksich",true,true,name,"Joseph Yaksich");
+
         // Preview is lighter: no phrase fillers, single-line.
         DictationCleanup.Options options=new DictationCleanup.Options();
         expect("preview","um hello comma, you know, new line world",
@@ -110,6 +123,19 @@ public final class DictationCleanupTest {
         options.startsSentence=startsSentence;
         options.replacements=DictationCleanup.parseReplacements("soft keys => SoftKeys\nbasically =>");
         expect("verbatim: "+input,input,DictationCleanup.verbatim(input,options),expected);
+    }
+    private static java.util.Set<String> english;
+    private static void sounds(String input,String rules,String expected){
+        if(english==null){
+            english=new java.util.HashSet<>();
+            try{for(String line:java.nio.file.Files.readAllLines(java.nio.file.Paths.get("app/src/main/assets/english.tsv")))english.add(line.split("\t")[0]);}
+            catch(java.io.IOException e){throw new RuntimeException(e);}
+        }
+        DictationCleanup.Options options=new DictationCleanup.Options();
+        options.replacements=DictationCleanup.parseReplacements(rules);
+        options.vocabulary=DictationCleanup.parseVocabulary(rules);
+        options.knownWord=english::contains;
+        expect(input,input,DictationCleanup.clean(input,options),expected);
     }
     private static void checkWith(String input,boolean startsSentence,boolean spokenPunctuation,String rules,String expected){
         DictationCleanup.Options options=new DictationCleanup.Options();

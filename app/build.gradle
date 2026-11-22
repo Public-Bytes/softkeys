@@ -60,7 +60,7 @@ def prepareSherpaOnnx = tasks.register('prepareSherpaOnnx') {
 android {
     namespace 'dev.softkeys.ios'
     compileSdk 36
-    defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 14; versionName '1.13' }
+    defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 15; versionName '1.14' }
     buildTypes {
         // Release builds carry only the 64-bit ARM library, about 9 MB compressed. Phones without
         // it, including 32-bit phones, use the phone speech service. x86_64 is for emulator testing.

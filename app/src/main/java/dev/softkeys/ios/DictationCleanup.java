@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -23,6 +24,13 @@ public final class DictationCleanup {
         public boolean startsSentence=true;
         /** Pairs of {spoken phrase, written text}, from {@link #parseReplacements}. */
         public List<String[]> replacements=new ArrayList<>();
+        /**
+         * Words the user wants spelled exactly, from {@link #parseVocabulary}. A transcribed word
+         * that sounds like one of them, and is not a known English word, is replaced with it.
+         */
+        public List<String> vocabulary=new ArrayList<>();
+        /** True for known English words, which are never respelled. Sound matching is off when this is null. */
+        public Predicate<String> knownWord;
     }
 
     private DictationCleanup(){}
@@ -65,6 +73,25 @@ public final class DictationCleanup {
         return rules;
     }
 
+    /**
+     * Reads the words the user wants spelled exactly. They are the written side of each
+     * one-word rule, such as "Yaksich" in "joksich => Yaksich", and any line that holds a
+     * single word with no arrow.
+     */
+    public static List<String> parseVocabulary(String text){
+        List<String> words=new ArrayList<>();
+        if(text==null)return words;
+        Set<String> seen=new HashSet<>();
+        for(String line:text.split("\\r?\\n")){
+            line=line.trim();
+            if(line.isEmpty()||line.startsWith("#"))continue;
+            String word=line;
+            for(String arrow:new String[]{"=>","->","="}){int index=line.indexOf(arrow);if(index>0){word=line.substring(index+arrow.length()).trim();break;}}
+            if(word.length()>=4&&word.chars().allMatch(Character::isLetter)&&seen.add(lower(word)))words.add(word);
+        }
+        return words;
+    }
+
     /** Full cleanup for the text that will be inserted. */
     public static String clean(String raw,Options options){return run(raw,options,false,false);}
 
@@ -93,6 +120,7 @@ public final class DictationCleanup {
             removeFillers(tokens,light);
             collapseRepeats(tokens,light);
             replace(tokens,options.replacements);
+            soundAlike(tokens,options.vocabulary,options.knownWord);
         }
         return join(tokens,options.startsSentence);
     }
@@ -212,12 +240,88 @@ public final class DictationCleanup {
                 boolean match=true;
                 for(int k=0;k<spoken.length&&match;k++)match=!punctuation(tokens.get(i+k))&&lower(tokens.get(i+k)).equals(spoken[k]);
                 if(!match)continue;
+                boolean capital=Character.isUpperCase(tokens.get(i).charAt(0));
                 for(int k=0;k<spoken.length;k++)tokens.remove(i);
-                if(!rule[1].isEmpty()){tokens.add(i,rule[1]);i++;}
+                if(!rule[1].isEmpty()){tokens.add(i,matchCapital(rule[1],capital));i++;}
                 replaced=true;break;
             }
             if(!replaced)i++;
         }
+    }
+
+    /**
+     * Replaces a word that sounds like a vocabulary word, such as "Joksich" or "Jarkswich" for
+     * "Yaksich". Each word is reduced to a sound key, and a word matches when its key is within
+     * one edit of the vocabulary word's key, or two edits for a key of 7 or more letters. Known
+     * English words, and words shorter than 4 letters, are never changed.
+     */
+    private static void soundAlike(List<String> tokens,List<String> vocabulary,Predicate<String> knownWord){
+        if(vocabulary==null||vocabulary.isEmpty()||knownWord==null)return;
+        String[] keys=new String[vocabulary.size()];
+        for(int v=0;v<keys.length;v++)keys[v]=soundKey(lower(vocabulary.get(v)));
+        for(int i=0;i<tokens.size();i++){
+            String token=tokens.get(i);
+            if(token.length()<4||!token.chars().allMatch(Character::isLetter))continue;
+            String plain=lower(token);
+            if(knownWord.test(plain))continue;
+            String key=soundKey(plain);
+            int best=-1,bestDistance=Integer.MAX_VALUE;
+            for(int v=0;v<keys.length;v++){
+                if(lower(vocabulary.get(v)).equals(plain)){best=-1;break;}
+                if(keys[v].length()<4||key.isEmpty()||key.charAt(0)!=keys[v].charAt(0))continue;
+                int distance=editDistance(key,keys[v]);
+                if(distance<=(keys[v].length()>=7?2:1)&&distance<bestDistance){best=v;bestDistance=distance;}
+            }
+            if(best>=0)tokens.set(i,matchCapital(vocabulary.get(best),Character.isUpperCase(token.charAt(0))));
+        }
+    }
+
+    /**
+     * A rough key for how an English speaker would say a word. Letters that make the same sound
+     * get the same symbol: "x" becomes "ks", "ck" and "c" become "k", "z" becomes "s", "ch",
+     * "sh", and a final "ge" become "J", and a "j" at the start becomes "y". Every vowel becomes
+     * "a", silent letters are dropped, and repeated symbols are written once.
+     */
+    static String soundKey(String word){
+        String s=word.replaceAll("[^a-z]","");
+        if(s.isEmpty())return s;
+        s=s.replaceAll("^wr","r").replaceAll("^kn","n").replaceAll("ge$","J");
+        if(s.length()>3)s=s.replaceAll("([^aeiou])e$","$1");
+        s=s.replace("tch","J").replace("dge","J").replace("ch","J").replace("sh","J").replace("zh","J").replace("dj","J");
+        s=s.replace("ph","f").replace("ck","k").replace("x","ks").replace("q","k");
+        s=s.replaceAll("c(?=[eiy])","s").replace('c','k').replace('z','s');
+        s=s.replaceAll("^j","y").replace('j','J');
+        s=s.replace("h","");
+        s=s.replaceAll("(?<=[bdfgklmnprstvJ])w","");
+        s=s.replaceAll("(?<=[aeiou])r(?=[^aeiouy]|$)","");
+        if(s.isEmpty())return s;
+        StringBuilder key=new StringBuilder();
+        for(int i=0;i<s.length();i++){
+            char c=s.charAt(i);
+            if("aeiou".indexOf(c)>=0||c=='y'&&i>0)c='a';
+            if(key.length()==0||key.charAt(key.length()-1)!=c)key.append(c);
+        }
+        return key.toString();
+    }
+
+    private static int editDistance(String a,String b){
+        int[] row=new int[b.length()+1];
+        for(int j=0;j<=b.length();j++)row[j]=j;
+        for(int i=1;i<=a.length();i++){
+            int diagonal=row[0];row[0]=i;
+            for(int j=1;j<=b.length();j++){
+                int above=row[j];
+                row[j]=Math.min(Math.min(row[j]+1,row[j-1]+1),diagonal+(a.charAt(i-1)==b.charAt(j-1)?0:1));
+                diagonal=above;
+            }
+        }
+        return row[b.length()];
+    }
+
+    /** Capitalizes a lowercase replacement, such as "yaksich", when the word it replaces was capitalized. */
+    private static String matchCapital(String written,boolean capital){
+        if(!capital||written.isEmpty()||written.chars().anyMatch(Character::isUpperCase))return written;
+        return Character.toUpperCase(written.charAt(0))+written.substring(1);
     }
 
     private static int strength(String mark){
