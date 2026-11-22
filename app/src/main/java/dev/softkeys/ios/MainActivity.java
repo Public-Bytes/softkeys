@@ -181,7 +181,7 @@ public class MainActivity extends Activity {
     }
     private void showReplacements(){
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(24),dp(8),dp(24),dp(8));
-        content.addView(text("Write one rule per line, such as \"soft keys => SoftKeys\". Leave the right side empty to remove a word. Rules apply to on-device dictation in the Clean style.",14,muted));
+        content.addView(text("Write one rule per line, such as \"soft keys => SoftKeys\". Leave the right side empty to remove a word. A line with only one word, such as \"Yaksich\", also works. Dictation then fixes any word that sounds like it, so one rule covers every way the model misspells a name. Rules apply to on-device dictation in the Clean style.",14,muted));
         EditText rules=new EditText(this);rules.setTextColor(ink);rules.setTextSize(16);rules.setGravity(Gravity.TOP);rules.setMinLines(5);rules.setHint("soft keys => SoftKeys");
         rules.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         rules.setText(prefs.getString("dictationReplacements",""));rules.setContentDescription("Word replacement rules");

@@ -644,7 +644,11 @@ public class IosKeyboardService extends InputMethodService {
     private DictationCleanup.Options cleanupOptions(){
         DictationCleanup.Options options=new DictationCleanup.Options();
         options.spokenPunctuation=prefs.getBoolean("spokenPunctuation",true);
-        options.replacements=DictationCleanup.parseReplacements(prefs.getString("dictationReplacements",""));
+        String rules=prefs.getString("dictationReplacements","");
+        options.replacements=DictationCleanup.parseReplacements(rules);
+        options.vocabulary=DictationCleanup.parseVocabulary(rules);
+        EnglishDictionary dict=dictionary;
+        if(dict!=null)options.knownWord=dict::contains;
         int end=before.length();
         while(end>0&&before.charAt(end-1)==' ')end--;
         char previous=end==0?'\n':before.charAt(end-1);

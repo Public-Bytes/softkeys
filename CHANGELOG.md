@@ -1,5 +1,9 @@
 # Release notes
 
+## 1.14
+
+Word replacements now fix words that sound like a rule's written word, as well as the exact spoken words. Before, a rule such as `joksich => Yaksich` fixed only "Joksich", and the model kept writing new spellings such as "Yoxich" and "Jarkswich". Now one rule, or a line with just `Yaksich`, fixes those spellings too. Known English words are never changed this way, so a rule for "Lilly" leaves "lily" alone. A lowercase replacement also takes a capital letter when the word it replaces had one, so `joksich => yaksich` writes "Yaksich" after "Joseph".
+
 ## 1.13
 
 The keyboard button on the dictation keyboard now sits at the left end of the bottom row, beside Space, Delete, and Return, instead of on a row of its own. The dictation keyboard is shorter as a result. The space below the keys on phones with gesture or button navigation is Android's navigation bar and is unchanged.
