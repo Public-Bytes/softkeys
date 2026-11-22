@@ -4,7 +4,7 @@ Thanks for trying SoftKeys. Bug reports, ideas, and pull requests are welcome.
 
 ## Reporting a problem
 
-[Open an issue](https://github.com/gitcommit90/softkeys/issues/new/choose) and choose **Bug report**. These details help most:
+[Open an issue](https://github.com/Public-Bytes/softkeys/issues/new/choose) and choose **Bug report**. These details help most:
 
 - Your phone model and Android version, and the SoftKeys version from the SoftKeys app.
 - The app you were typing in.
