@@ -485,10 +485,10 @@ public class IosKeyboardService extends InputMethodService {
         // On-device dictation needs the downloaded model. Without it, the phone's speech service is used.
         boolean onDevice="device".equals(prefs.getString("dictationEngine","system"));
         boolean phoneService=android.speech.SpeechRecognizer.isRecognitionAvailable(this);
-        if(onDevice&&(!SpeechEngine.supported()||!SpeechModel.installed(this))){
-            if(!phoneService){showDictationError(SpeechEngine.supported()?"Download the on-device speech model in SoftKeys settings":"No speech recognition service is installed");return;}
+        if(onDevice&&(!SpeechEngine.supported(this)||!SpeechModel.installed(this))){
+            if(!phoneService){showDictationError(SpeechEngine.supported(this)?"Download the on-device speech model in SoftKeys settings":"No speech recognition service is installed");return;}
             onDevice=false;
-            Toast.makeText(this,SpeechEngine.supported()?"On-device model not downloaded. Using phone speech service.":"On-device dictation isn't supported here. Using phone speech service.",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,SpeechEngine.supported(this)?"On-device model not downloaded. Using phone speech service.":"On-device dictation isn't supported here. Using phone speech service.",Toast.LENGTH_SHORT).show();
         }
         if(!onDevice&&!phoneService){showDictationError("No speech recognition service is installed");return;}
         dismissClipboardSuggestion();clearCorrection();glideLength=0;lastSpace=lastShift=0;

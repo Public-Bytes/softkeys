@@ -11,7 +11,7 @@ def sherpaVersion = '2.0.2'
 def sherpaAar = "sherpa-onnx-static-link-onnxruntime-${sherpaVersion}.aar"
 def sherpaUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${sherpaVersion}/${sherpaAar}"
 def sherpaSha256 = 'cb73564809268c8b96bf98f1a32b0b3b611e01d028d22f10beb57ef55418c0cb'
-def sherpaAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64']
+def sherpaAbis = ['arm64-v8a', 'x86_64']
 def sherpaJniLibs = layout.buildDirectory.dir('generated/sherpa-onnx/jniLibs')
 
 def sha256 = { File file ->
@@ -62,9 +62,10 @@ android {
     compileSdk 36
     defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 12; versionName '1.11' }
     buildTypes {
-        // Phones use ARM. The x86_64 library is only for emulator testing with debug builds.
-        release { minifyEnabled false; ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' } }
-        debug { ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' } }
+        // Release builds carry only the 64-bit ARM library, about 9 MB compressed. Phones without
+        // it, including 32-bit phones, use the phone speech service. x86_64 is for emulator testing.
+        release { minifyEnabled false; ndk { abiFilters 'arm64-v8a' } }
+        debug { ndk { abiFilters 'arm64-v8a', 'x86_64' } }
     }
     sourceSets { main { jniLibs.srcDirs += sherpaJniLibs } }
     // Compress the native library in the APK. It is about 25 MB per ABI uncompressed.

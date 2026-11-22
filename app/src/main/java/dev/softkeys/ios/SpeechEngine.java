@@ -1,7 +1,6 @@
 package dev.softkeys.ios;
 
 import android.content.Context;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import com.k2fsa.sherpa.onnx.OnlineRecognizer;
@@ -21,10 +20,10 @@ final class SpeechEngine {
 
     private SpeechEngine(){}
 
-    /** True when the APK contains the native speech library for this phone. */
-    static boolean supported(){
-        for(String abi:Build.SUPPORTED_ABIS)if(abi.equals("arm64-v8a")||abi.equals("armeabi-v7a")||abi.equals("x86_64"))return true;
-        return false;
+    /** True when Android installed the native speech library for this phone's ABI. */
+    static boolean supported(Context context){
+        String directory=context.getApplicationInfo().nativeLibraryDir;
+        return directory!=null&&new java.io.File(directory,"libsherpa-onnx-jni.so").isFile();
     }
 
     static synchronized boolean loaded(){return recognizer!=null;}
