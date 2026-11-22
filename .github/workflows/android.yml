@@ -56,6 +56,12 @@ jobs:
           javac -d build/cleanup-test tests/DictationCleanupTest.java app/src/main/java/dev/softkeys/ios/DictationCleanup.java
           java -cp build/cleanup-test DictationCleanupTest
 
+      - name: Check dictation keyboard decisions
+        run: |
+          mkdir -p build/mode-test
+          javac -d build/mode-test tests/DictationModeTest.java app/src/main/java/dev/softkeys/ios/DictationMode.java app/src/main/java/dev/softkeys/ios/SpeechSegmenter.java
+          java -cp build/mode-test DictationModeTest
+
       - name: Build unsigned release
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 

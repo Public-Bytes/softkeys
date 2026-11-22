@@ -113,7 +113,7 @@ final class DictationSession implements DictationEngine {
         boolean valid(){return !closed&&attempt==this;}
         @Override public void onReadyForSpeech(Bundle params){if(valid()&&!stopping)showListening();}
         @Override public void onBeginningOfSpeech(){if(valid()&&!stopping)showListening();}
-        @Override public void onRmsChanged(float rms){}
+        @Override public void onRmsChanged(float rms){if(valid()&&!stopping)listener.level(DictationSession.this,DictationMode.levelFromRmsDb(rms));}
         @Override public void onBufferReceived(byte[] buffer){}
         @Override public void onEndOfSpeech(){
             if(!valid()||stopping||audio!=null)return;
@@ -153,7 +153,7 @@ final class DictationSession implements DictationEngine {
                 case SpeechRecognizer.ERROR_NETWORK,SpeechRecognizer.ERROR_NETWORK_TIMEOUT->"Dictation couldn't connect. Check your connection and try again.";
                 case SpeechRecognizer.ERROR_RECOGNIZER_BUSY,SpeechRecognizer.ERROR_TOO_MANY_REQUESTS->"Speech recognition is busy. Wait a moment and try again.";
                 case SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE->"English (US) speech recognition isn't available. Check your speech recognition language downloads.";
-                default->"Speech recognition stopped. Tap the microphone to try again.";
+                default->"Speech recognition stopped. Tap Dictate to try again.";
             });
         }
         @Override public void onEvent(int eventType,Bundle params){}
