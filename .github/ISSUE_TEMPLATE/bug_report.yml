@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in SoftKeys doesn't work or looks wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please don't include messages, passwords, or other private text. Use sample text in screenshots.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SoftKeys version
+      placeholder: "1.13"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version
+      placeholder: Samsung Galaxy S24, Android 15
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App you were typing in
+      placeholder: Chrome, Messages, ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Typing, autocorrect, or suggestions
+        - Glide typing
+        - Layout or appearance
+        - Dictation (on-device)
+        - Dictation (phone speech service)
+        - Speech model download
+        - Emoji or clipboard
+        - Settings
+        - Install or update
+        - Other
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or recording
+      description: Optional. Drag images or videos here.

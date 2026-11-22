@@ -699,8 +699,8 @@ public class IosKeyboardService extends InputMethodService {
         private float emojiOffset;
         private android.animation.ValueAnimator pageAnimator;
         private float rowH,suggestionH,width,categoryH,contentLeft,contentWidth,keyGapX,keyGapY,keyRadius,topRadius;
-        // Dictation panel rows: the hint and style row, the recessed well, Space/Delete/Return, and the keyboard button.
-        private float panelTopH,panelWellH,panelSwitchH,panelLeft,panelWidth;
+        // Dictation panel rows: the hint and style row, the recessed well, and the keyboard button with Space/Delete/Return.
+        private float panelTopH,panelWellH,panelLeft,panelWidth;
         private final RectF well=new RectF();
         private final Typeface medium=Typeface.create("sans-serif-medium",Typeface.NORMAL);
         private boolean wide,shortScreen;
@@ -730,10 +730,10 @@ public class IosKeyboardService extends InputMethodService {
                 keyRadius=dp(9.5f);topRadius=dp(24);
             }
             categoryH=dp(34);contentWidth=width-2*contentLeft;
-            panelTopH=dp(shortScreen?32:40);panelWellH=dp(shortScreen?56:68);panelSwitchH=dp(shortScreen?38:46);
+            panelTopH=dp(shortScreen?32:40);panelWellH=dp(shortScreen?56:68);
             panelWidth=wide?Math.min(contentWidth,dp(640)):contentWidth;panelLeft=(width-panelWidth)/2;
             // The dictation panel is shorter than the letters, so more of the app stays visible.
-            int height=dictationPanel?Math.round(panelTopH+panelWellH+rowH+panelSwitchH+navBottom+dp(4))
+            int height=dictationPanel?Math.round(panelTopH+panelWellH+rowH+navBottom+dp(4))
                 :Math.round(suggestionH+rowH*(4+numberRowOffset())+(emoji?categoryH:0)+navBottom+dp(4));
             setMeasuredDimension((int)width,height);
             if(wasWide!=wide)palette();
@@ -785,8 +785,8 @@ public class IosKeyboardService extends InputMethodService {
             keys.add(new Key("dict:action",well.right-dp(132),wellTop,well.right,wellBottom,true));
             keys.add(new Key("dict:cancel",well.left,wellTop,well.left+dp(60),wellBottom,true));
             keys.add(new Key("dict:done",well.right-dp(104),wellTop,well.right,wellBottom,true));
-            rowAt(new String[]{"space","delete","return"},wellBottom,left,panelWidth,new float[]{5.6f,1.5f,1.9f});
-            keys.add(new Key("dict:keys",left,wellBottom+rowH,left+Math.max(dp(66),panelWidth*.17f),wellBottom+rowH+panelSwitchH,true));
+            // The keyboard button shares the bottom row with Space, Delete, and Return.
+            rowAt(new String[]{"dict:keys","space","delete","return"},wellBottom,left,panelWidth,new float[]{1.5f,4.4f,1.5f,1.9f});
         }
         private static final int IDLE=0,RECORDING=1,TRANSCRIBING=2,NOTICE=3;
         private int stage(){return dictation!=null?dictationFinishing?TRANSCRIBING:RECORDING:panelNotice!=null?NOTICE:IDLE;}
