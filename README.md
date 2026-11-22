@@ -1,8 +1,30 @@
-# SoftKeys
+<p align="center">
+  <img src="docs/images/softkeys-icon.png" alt="SoftKeys app icon" width="96" height="96">
+</p>
 
-An iOS-inspired English keyboard for Android, with local autocorrect, glide typing, a dictation keyboard with optional on-device speech recognition, and layouts for phones and foldables.
+<h1 align="center">SoftKeys</h1>
 
-**[Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest)** | [Release notes](CHANGELOG.md) | [Report a problem](https://github.com/gitcommit90/softkeys/issues/new/choose) | [Contributing](CONTRIBUTING.md)
+<p align="center">
+  <strong>An iOS-inspired keyboard for Android.</strong><br>
+  Local autocorrect, glide typing, on-device dictation, and layouts for phones and foldables.
+</p>
+
+<p align="center">
+  <a href="https://github.com/gitcommit90/softkeys/releases/latest"><strong>Download the APK</strong></a> ·
+  <a href="#install">Install</a> ·
+  <a href="CHANGELOG.md">Release notes</a> ·
+  <a href="#privacy-at-a-glance">Privacy</a> ·
+  <a href="https://github.com/gitcommit90/softkeys/issues/new/choose">Report a problem</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/dictation-demo.gif" alt="SoftKeys dictation demo: tapping the microphone, speaking, and the transcribed text appearing in the text field" width="360">
+</p>
+
+---
+
+SoftKeys brings the look and feel of the iPhone keyboard to Android: continuous key rows, one wide space bar, and a calm, familiar layout. Typing, autocorrect, and glide typing run entirely on the phone, and dictation can too.
 
 SoftKeys is free and open source under the [MIT License](LICENSE). It is an independent project and is not affiliated with Apple or Google. The current release is **1.13**.
 
@@ -12,6 +34,35 @@ SoftKeys is free and open source under the [MIT License](LICENSE). It is an inde
 - Autocorrect, suggestions, and glide typing that run on the phone from a bundled English dictionary. Typed text is never sent over the network.
 - Cursor control on the space bar, accents on held letters, an emoji picker with search, a Paste chip for recently copied text, and adjustable key vibration.
 - A dictation keyboard. Speech can be recognized on the phone with a model you download once, so audio never leaves the phone, or by your phone's speech recognition service.
+
+## Gallery
+
+Real screenshots from an Android phone, light and dark, upright and sideways.
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/images/phone-light.jpg" alt="SoftKeys light keyboard on an Android phone" height="380"><br>
+      <sub><b>Light</b> · white keys on soft gray</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/phone-dark.jpg" alt="SoftKeys dark keyboard on an Android phone" height="380"><br>
+      <sub><b>Dark</b> · easy on the eyes at night</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/images/phone-dark-number-row.jpg" alt="SoftKeys dark keyboard with a number row above the letters" height="380"><br>
+      <sub><b>Number row</b> · digits above the letters on wide screens</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="3">
+      <img src="docs/images/landscape-dark.jpg" alt="SoftKeys dark keyboard in landscape on an Android phone" width="760"><br>
+      <sub><b>Landscape</b> · the full layout stretches across the wider screen</sub>
+    </td>
+  </tr>
+</table>
+
+The default Reference theme uses light gray with white keys on narrow displays and lavender on wide displays. Both layouts use continuous rows with one space bar. Wide displays include a dedicated number row by default. Enter sits at the far right of the bottom row, with the microphone beside Space. Dark, Lavender, and System themes are also available.
 
 ## Requirements
 
@@ -40,23 +91,6 @@ Each release lists the APK's SHA-256 checksum in a `.sha256` file, so you can ch
 - Permissions: vibration, microphone (asked the first time you dictate), and internet (model downloads only). No contacts, location, or storage permissions.
 
 [Privacy and permissions](#privacy-and-permissions) has the details.
-
-## Appearance
-
-The default Reference theme uses light gray with white keys on narrow displays and lavender on wide displays. Both layouts use continuous rows with one space bar. Wide displays include a dedicated number row by default. Enter sits at the far right of the bottom row, with the microphone beside Space. Dark, Lavender, and System themes are also available.
-
-<table>
-  <tr>
-    <th>Phone</th>
-    <th>Wide display</th>
-  </tr>
-  <tr>
-    <td width="38%"><img src="docs/images/phone.png" alt="SoftKeys with white keys on a light gray background on a narrow display" width="320"></td>
-    <td width="62%"><img src="docs/images/tablet.png" alt="SoftKeys with a continuous lavender keyboard on a wide display" width="620"></td>
-  </tr>
-</table>
-
-The captures show the 1.5 Reference layout on narrow and wide displays. They use a sample editor and contain no personal messages.
 
 ## Typing
 
