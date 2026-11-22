@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/gitcommit90/softkeys/releases/latest"><strong>Download the APK</strong></a> ·
+  <a href="https://github.com/Public-Bytes/softkeys/releases/latest"><strong>Download the APK</strong></a> ·
   <a href="#install">Install</a> ·
   <a href="CHANGELOG.md">Release notes</a> ·
   <a href="#privacy-at-a-glance">Privacy</a> ·
-  <a href="https://github.com/gitcommit90/softkeys/issues/new/choose">Report a problem</a> ·
+  <a href="https://github.com/Public-Bytes/softkeys/issues/new/choose">Report a problem</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -26,7 +26,7 @@
 
 SoftKeys brings the look and feel of the iPhone keyboard to Android: continuous key rows, one wide space bar, and a calm, familiar layout. Typing, autocorrect, and glide typing run entirely on the phone, and dictation can too.
 
-SoftKeys is free and open source under the [MIT License](LICENSE). It is an independent project and is not affiliated with Apple or Google. The current release is **1.13**.
+SoftKeys is free and open source under the [MIT License](LICENSE). It is an independent project and is not affiliated with Apple or Google.
 
 ## Highlights
 
@@ -74,7 +74,7 @@ The default Reference theme uses light gray with white keys on narrow displays a
 
 SoftKeys is installed from its APK file. It is not on Google Play.
 
-1. On your Android phone, open the [latest release](https://github.com/gitcommit90/softkeys/releases/latest) and download `SoftKeys-1.13.apk` (about 10 MB).
+1. On your Android phone, open the [latest release](https://github.com/Public-Bytes/softkeys/releases/latest) and download the `SoftKeys` APK file (about 10 MB).
 2. Open the downloaded file. If Android asks, allow your browser or file manager to install apps. Google Play Protect may show a warning because the app does not come from Google Play.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open any text field to start typing, or use the sample field in the SoftKeys app.
@@ -184,7 +184,7 @@ On-device dictation keeps microphone audio in memory on the phone and never send
 Use Java 17, Android SDK platform 36, and the included Gradle wrapper. Set `ANDROID_HOME`, or put your SDK path in an untracked `local.properties` file.
 
 ```sh
-git clone https://github.com/gitcommit90/softkeys.git
+git clone https://github.com/Public-Bytes/softkeys.git
 cd softkeys
 ./gradlew :app:assembleRelease --console=plain
 ```
@@ -201,7 +201,7 @@ On-device dictation recognizes English only. The Fast model does not add punctua
 
 Emoji use the device's Android font, so artwork and available characters depend on Android. Apple emoji artwork is not included. Haptic feedback depends on physical device hardware and system restrictions.
 
-SoftKeys is a small project. Each release is checked with offline tests and benchmarks and a build in GitHub Actions, but it is not tested on every phone, Android version, or app. If something looks or behaves wrong on your phone, please [open an issue](https://github.com/gitcommit90/softkeys/issues/new/choose) with your phone model and Android version.
+SoftKeys is a small project. Each release is checked with offline tests and benchmarks and a build in GitHub Actions, but it is not tested on every phone, Android version, or app. If something looks or behaves wrong on your phone, please [open an issue](https://github.com/Public-Bytes/softkeys/issues/new/choose) with your phone model and Android version.
 
 ## Data and licenses
 
