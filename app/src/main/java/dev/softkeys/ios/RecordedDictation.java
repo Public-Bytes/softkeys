@@ -139,7 +139,8 @@ abstract class RecordedDictation implements DictationEngine {
     static void append(StringBuilder complete,String text){
         text=text.trim();
         if(text.isEmpty())return;
-        if(complete.length()>0)complete.append(' ');
+        // The seam mark tells the cleanup where one decoded part ends and the next begins.
+        if(complete.length()>0)complete.append(' ').append(DictationCleanup.SEAM).append(' ');
         complete.append(text);
     }
 }

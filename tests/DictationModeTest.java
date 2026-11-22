@@ -77,28 +77,48 @@ public final class DictationModeTest {
         meter.reset();
         expect("reset",meter.bar(0),0f);
 
-        // Segmenter, with chunks of 50 ms: soft limit 20 s, hard limit 28 s.
+        // Segmenter, with chunks of 50 ms: soft limit 20 s, pause 0.7 s, hard limit 40 s.
         SpeechSegmenter segmenter=new SpeechSegmenter();
         int cut=0,at=0;
         for(int i=0;i<500&&cut==0;i++){
-            boolean pause=i>=420&&i<430; // A half-second pause at 21 s.
+            boolean pause=i>=420&&i<436; // A 0.8-second pause at 21 s.
             cut=segmenter.add(pause?0.0005f:0.08f);at=i;
         }
-        expect("cuts in the pause",at>=425&&at<430,true);
-        expect("cut point is inside the pause",cut>=420&&cut<=430,true);
+        expect("cuts in the pause",at>=433&&at<436,true);
+        expect("cut point is inside the pause",cut>=420&&cut<=436,true);
+        segmenter=new SpeechSegmenter();
+        cut=0;
+        for(int i=0;i<700&&cut==0;i++){
+            boolean pause=i>=420&&i<430; // A half-second pause inside a sentence is not a split point.
+            cut=segmenter.add(pause?0.0005f:0.08f+(i%7)*0.001f);
+        }
+        expect("short pauses are not cut",cut,0);
         segmenter=new SpeechSegmenter();
         cut=0;at=0;
-        for(int i=0;i<700&&cut==0;i++){
-            float level=i==520?0.01f:0.08f+(i%7)*0.001f; // No pause, one softer moment at 26 s.
+        for(int i=0;i<900&&cut==0;i++){
+            float level=i==760?0.01f:0.08f+(i%7)*0.001f; // No pause, one softer moment at 38 s.
             cut=segmenter.add(level);at=i;
         }
-        expect("hard limit",at,559);
-        expect("cuts at the quietest moment",cut,521);
+        expect("hard limit",at,799);
+        expect("cuts at the quietest moment",cut,761);
         segmenter=new SpeechSegmenter();
         cut=0;
         for(int i=0;i<300;i++)cut+=segmenter.add(i%40<30?0.08f:0.0005f);
         expect("short recordings are not cut",cut,0);
         expect("rms",SpeechSegmenter.rms(new float[]{0.5f,-0.5f},0,2),0.5f);
+
+        // Voice activity for the recording waves. A room level of 0.2 reads as silence and
+        // speech at 0.65 as full, and a steady fan does not keep the waves up.
+        DictationMode.Voice voice=new DictationMode.Voice();
+        float quiet=0;for(int i=0;i<60;i++)quiet=voice.update(0.2f);
+        expect("silence is flat",quiet<0.05f,true);
+        float loud=voice.update(0.65f);
+        expect("speech is full",loud>0.95f,true);
+        float soft=voice.update(0.4f);
+        expect("soft speech is partial",soft>0.3f&&soft<0.8f,true);
+        voice.reset();
+        float fan=0;for(int i=0;i<4000;i++)fan=voice.update(0.45f);
+        expect("steady noise settles",fan<0.1f,true);
 
         System.out.println(passes+" passed, "+failures+" failed");
         if(failures>0)System.exit(1);

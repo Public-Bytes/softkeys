@@ -5,9 +5,10 @@ package dev.softkeys.ios;
  *
  * Parakeet decodes everything the user said after Done. A long recording would make the
  * user wait, and its memory use grows with its length. While the user keeps talking, this
- * class finds a pause after about 20 seconds so that part can be decoded in the
- * background. Without a pause, it splits at the quietest moment of the last 5 seconds
- * once the part reaches 28 seconds. It works in chunks of 50 ms and uses no Android classes.
+ * class finds a pause of at least 0.7 seconds after about 20 seconds, so that part can be
+ * decoded in the background. A pause that long usually falls between sentences, and the model
+ * ends each part as if it were the end of a sentence. Without such a pause, it splits at the
+ * quietest moment of the last 5 seconds once the part reaches 40 seconds. It works in chunks of 50 ms and uses no Android classes.
  */
 public final class SpeechSegmenter {
     /** Samples in one chunk at 16 kHz. */
@@ -17,7 +18,7 @@ public final class SpeechSegmenter {
     private int count;
     private float floor=-1,peak;
 
-    public SpeechSegmenter(){this(400,560,6,100);}
+    public SpeechSegmenter(){this(400,800,14,100);}
 
     /**
      * @param soft chunks before a pause may end a part

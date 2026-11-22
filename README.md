@@ -86,7 +86,7 @@ Each release lists the APK's SHA-256 checksum in a `.sha256` file, so you can ch
 
 - What you type stays on the phone. SoftKeys does not send typed text anywhere and does not save it, apart from single words you choose to keep after a correction.
 - No accounts, ads, analytics, or tracking.
-- The network is used only when you choose to download a speech model, from fixed public files on Hugging Face.
+- The network is used only when you choose to download a speech model or the smart cleanup model, from fixed public files on Hugging Face.
 - On-device dictation keeps audio in memory on the phone. The phone speech service, if you choose it, may send audio to its provider.
 - Permissions: vibration, microphone (asked the first time you dictate), and internet (model downloads only). No contacts, location, or storage permissions.
 
@@ -117,13 +117,15 @@ Glide entry and suggestions remain available in email fields and recognized term
 
 ## Dictation
 
-Tap the microphone on the keys to switch to the dictation keyboard. The letter keys, numbers, and suggestions are replaced by a shorter panel, and recording starts at once. The panel shows a red dot with a timer, a level meter that moves with your voice, × to discard the recording, and Done. Tap Done, and the text is inserted and the panel returns to its idle state. Tap **Dictate** to record again. The bottom row of the panel holds the keyboard button, Space, Delete, and Return. Return runs the field's action, such as Send or Search, when it has one.
+Tap the microphone on the keys to switch to the dictation keyboard. The letter keys, numbers, and suggestions are replaced by a shorter panel, and recording starts at once. The panel shows a red dot with a timer, dotted waves that move with your voice, × to discard the recording, and Done. Tap Done, and the text is inserted and the panel returns to its idle state. Tap **Dictate** to record again. The bottom row of the panel holds the keyboard button, Space, Delete, and Return. Return runs the field's action, such as Send or Search, when it has one.
+
+To dictate without leaving the keys, tap the microphone at the right end of the suggestion bar. The suggestion bar turns into the waves with × and ✓, and the keys stay usable. Tap ✓ to insert the text, or start typing, and SoftKeys inserts the text first and your typing after it. After the text goes in, an Undo dictation button in the suggestion bar removes it until you type something else.
 
 Tap the keyboard button at the left end of the bottom row, beside Space, to bring the keys back. If you were recording, SoftKeys finishes the recording and inserts the text, and anything you type meanwhile follows it. SoftKeys remembers which keyboard you used last, so other text fields and the next time the keyboard opens show the dictation keyboard until you tap the keyboard button. Password, PIN, number, phone, date, and private browsing fields always show the keys and never record, and they do not change that choice.
 
 The first recording asks for microphone permission. After granting access, return to your text field and tap Dictate. You can also grant permission through Microphone access in SoftKeys settings. Dictation stays active through pauses until you tap Done. There is no time limit. Moving the cursor from the app, hiding the keyboard, or changing fields discards an open recording.
 
-The style button at the top right switches between **Clean** and **Verbatim**. Clean removes fillers and repeated words and applies spoken punctuation and your word replacements. Verbatim keeps every word that the model heard and fixes only spacing and capitals. Styles apply to on-device dictation.
+The style button at the top right switches between **Clean** and **Verbatim**. Clean removes fillers and repeated words, takes back what you correct, writes numbers and web addresses as text, and applies spoken punctuation and your word replacements. Verbatim keeps every word that the model heard and fixes only spacing and capitals. Styles apply to on-device dictation.
 
 ### Engines and models
 
@@ -141,6 +143,10 @@ The Clean style applies these rules before the text is inserted:
 - It removes "um", "uh", "er", and similar sounds, and it removes "you know" and "like" when commas set them apart. It also removes stutters and repeated words, such as "I I think" or "the the". Repeats that are often deliberate, such as "very very" and number sequences, are kept.
 - It turns spoken "comma", "period", "question mark", "exclamation point", "colon", "new line", and "new paragraph" into punctuation. Turn off **Spoken punctuation** to keep these words. "Period" stays a word in phrases such as "a period of time".
 - It applies your **Word replacements**, one rule per line, such as `soft keys => SoftKeys`. A rule with nothing after the arrow removes the words. A rule's written word, or a line with only one word such as `Kaczmarek`, also fixes other words that sound like it, so one rule covers the different ways the model misspells a name. Known English words are never changed this way.
+- It takes back what you correct. If you say "the meeting is Monday, actually wait, the meeting is Tuesday", only "the meeting is Tuesday" is inserted. The phrases include "actually wait", "no wait", "no sorry", "make that", "I meant", "never mind", "on second thought", "my mistake", "ignore that", "I mean", "or rather", and a lone "wait", "actually", or "sorry". "Scratch that" removes the sentence before it. Phrases that are also ordinary English, such as "make that" or "sorry", only act after a pause and when what follows clearly matches what came before, such as "I like tea, wait, I like coffee" or "500 dollars, actually 450 dollars", because people also say them in ordinary speech. The model often writes a quick "wait" as "weight" or "wheat", so those words count too, but only in the same repeated pattern.
+- It writes numbers as digits, such as "6'2\"", "120 pounds", "$20.50", "50%", "3:30", "2026", and "555-1212". A number from zero to nine stays a word unless a unit follows it, so "one time" and "the two of us" stay as they are.
+- It formats spoken lists. Say "first", "second", "one", "two" with a pause after each, "number one", "number two", or "bullet" before each item, and each item goes on its own line. A list needs at least two markers. Turn off **Format lists** to keep the words as spoken.
+- It writes spoken web addresses as text, so "google dot com" becomes "google.com", and "my email is name at gmail dot com" becomes "name@gmail.com".
 - It fixes spacing around punctuation and capitalizes sentences and the word "I".
 
 Both styles start the text with a lowercase letter when the cursor is in the middle of a sentence, unless the first word is "I" or has other capitals. A name at that position also loses its capital.
@@ -149,9 +155,15 @@ When the phone speech service is used on Android 13 and later, SoftKeys supplies
 
 If no engine can run, the panel says so and offers a button that opens SoftKeys settings. The keyboard button still brings the keys back.
 
+## Smart cleanup
+
+Smart cleanup is an optional extra step for on-device dictation in the Clean style, and it is off by default. It runs Handy Editor 350M, a small language model trained to remove the words a speaker takes back, such as "send it to the platform team, no sorry, to the support team". The model is a 229 MB download from Hugging Face, and it runs on the phone, so the text never leaves it. It needs a 64-bit ARM processor with dot product instructions, which most phones from 2018 on have.
+
+The Clean rules run before the model and after it. Before, they remove fillers and the corrections they can find, and the model gets lowercase words with no punctuation, the form it was trained on. After, they write numbers, web addresses, lists, and capitals. SoftKeys accepts the model's edit only when it removes words and changes punctuation and capitals. If the edit adds or changes a word, or removes text with no correction phrase near it, SoftKeys uses the rules-only text for that part. On 300 test sentences with a correction phrase from the Handy dictation-editing corpus, the rules alone got 99 right and smart cleanup got 155 right. Neither changed any of 153 sentences that needed no change. Smart cleanup adds a short wait after Done.
+
 ## Settings
 
-Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. The Dictation section holds the engine choice, the two speech model downloads, the style, and word replacements. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
+Open SoftKeys to change settings. They are grouped in cards: Setup, Try it, Appearance, Typing, Dictation, Dictation style, Custom vocabulary, and About. Dictation style has switches for spoken punctuation, list formatting, the final period, and lowercase. **Custom vocabulary** is a list of names and terms. Add one in the field at the bottom, and remove one with ×. Each entry fixes its spelling and capitals, so "testflight" becomes TestFlight and "swift ui" becomes SwiftUI, and a name of 4 or more letters also fixes words that sound like it. **Word replacements** below it takes `spoken => written` rules for anything else. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
 
 Open **Keypress vibration** to choose a duration from 1 to 100 ms using a slider or an exact number, including 2 ms. Moving the slider previews the vibration when Haptic feedback is on. Save keeps the value, Cancel preserves the previous value, and Default selects the existing 12 ms default. Hold feedback adjusts with the chosen duration.
 
@@ -189,7 +201,7 @@ cd softkeys
 ./gradlew :app:assembleRelease --console=plain
 ```
 
-The build downloads the sherpa-onnx 2.0.2 Android library from GitHub once and checks its SHA-256, so the first build needs network access. The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions checks the unsigned release build. Manual workflow runs can also upload the unsigned APK when Actions storage is available. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
+The build downloads the sherpa-onnx 2.0.2 Android library and the llama.cpp b9893 source from GitHub once and checks their SHA-256, so the first build needs network access. Building llama.cpp needs Android NDK 29.0.14206865 and the SDK CMake 3.31.6, which the Android Gradle Plugin can install. The unsigned APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`. GitHub Actions checks the unsigned release build. Manual workflow runs can also upload the unsigned APK when Actions storage is available. Installable signed updates are attached to Releases. Signing keys stay outside the repository and GitHub Actions.
 
 See [Development](docs/development.md) for the source layout, the sample editor, and release guidance.
 

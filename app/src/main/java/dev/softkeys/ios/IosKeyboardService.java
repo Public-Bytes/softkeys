@@ -20,6 +20,10 @@ public class IosKeyboardService extends InputMethodService {
     // The dictation keyboard. dictationPanel is true while the panel replaces the keys.
     // A handoff is a recording that is finishing after the user went back to the keys.
     private boolean dictationPanel,dictationHandoff,noPersonalizedLearning,fallbackNoticeShown;
+    // Dictation from the microphone in the suggestion bar, with the keys still showing. undoText
+    // is the text it inserted, which the Undo dictation button removes until something else is typed.
+    private boolean inlineDictation;
+    private String undoText;
     private DictationMode.Engine panelEngine=DictationMode.Engine.NONE;
     // A message in the panel, and its button: "permission", "settings", or "dictate".
     private String panelNotice,panelAction;
@@ -134,8 +138,8 @@ public class IosKeyboardService extends InputMethodService {
         preparePanel();
     }
     @Override public void onFinishInput(){cancelDictation();activeInput=false;decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);handler.removeCallbacks(suggestTask);clearCorrection();glideLength=0;super.onFinishInput();}
-    @Override public void onFinishInputView(boolean finishing){cancelDictation();SpeechEngine.keep(false);if(panelNoticeIsError)clearNotice();decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
-    @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(dictation==null&&level>=TRIM_MEMORY_UI_HIDDEN)SpeechEngine.release();}
+    @Override public void onFinishInputView(boolean finishing){cancelDictation();SpeechEngine.keep(false);SmartEditor.release();if(panelNoticeIsError)clearNotice();decodingGlide=false;pendingActions.clear();revision++;handler.removeCallbacks(readContext);if(keyboard!=null)keyboard.cancelTouches();super.onFinishInputView(finishing);}
+    @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(dictation==null&&level>=TRIM_MEMORY_UI_HIDDEN){SpeechEngine.release();SmartEditor.release();}}
     @Override public void onDestroy(){cancelDictation();SpeechEngine.release();if(clipboard!=null)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(clipboardPreferenceListener);clipboardText=null;worker.shutdownNow();reader.shutdownNow();handler.removeCallbacksAndMessages(null);super.onDestroy();}
     @Override public void onUpdateSelection(int os,int oe,int ns,int ne,int cs,int ce){
         super.onUpdateSelection(os,oe,ns,ne,cs,ce);
@@ -143,6 +147,7 @@ public class IosKeyboardService extends InputMethodService {
         if(ns==ne&&acknowledgements.contains(ns)){while(!acknowledgements.isEmpty()&&acknowledgements.removeFirst()!=ns){}return;}
         if(ns==caret&&ne==caret+selectionLength)return;
         cancelDictation();
+        if(undoText!=null){undoText=null;panelChanged();}
         decodingGlide=false;pendingActions.clear();caret=Math.min(ns,ne);selectionLength=Math.abs(ne-ns);acknowledgements.clear();manualShift=false;clearCorrection();glideLength=0;revision++;
         if(keyboard==null||!keyboard.cursorDragging())scheduleContextRead();
     }
@@ -223,6 +228,8 @@ public class IosKeyboardService extends InputMethodService {
     private void rebuild(){if(keyboard!=null){keyboard.arrange();keyboard.requestLayout();keyboard.invalidate();}}
     private void noteEdit(){
         dismissClipboardSuggestion();
+        // Any edit after dictation ends the chance to undo it.
+        if(undoText!=null){undoText=null;panelChanged();}
         revision++;selectionLength=0;manualShift=false;acknowledgements.addLast(caret);while(acknowledgements.size()>64)acknowledgements.removeFirst();
         if(before.length()>256)before.delete(0,before.length()-256);scheduleContextRead();updateShift();refreshSuggestions();
     }
@@ -434,6 +441,8 @@ public class IosKeyboardService extends InputMethodService {
     private void press(String value){
         if(value.startsWith("dict:")){pressPanel(value);return;}
         if(dictationPanel){pressPanelEdit(value);return;}
+        if(value.startsWith("inline:")){pressInline(value);return;}
+        if(undoText!=null){undoText=null;if(keyboard!=null)keyboard.panelChanged();}
         if(!value.startsWith("suggest:"))cancelRecording();
         if(decodingGlide){pendingActions.add(()->press(value));return;}
         if(value.startsWith("text:")){String text=value.substring(5);lastShift=lastSpace=0;if(emojiSearching){emojiQuery+=text.toLowerCase(Locale.US);keyboard.invalidateHeader();}else commit(text);return;}
@@ -561,6 +570,8 @@ public class IosKeyboardService extends InputMethodService {
                 boolean clean=!prefs.getBoolean("dictationCleanup",true);
                 prefs.edit().putBoolean("dictationCleanup",clean).apply();
                 panelChanged();announce(clean?"Clean style":"Verbatim style");
+                // The style changes a lot about the text, so say what each one does.
+                Toast.makeText(this,clean?"Clean: removes fillers and corrections, and applies spoken punctuation, lists, and numbers":"Verbatim: every word as heard. No spoken punctuation, lists, or cleanup.",Toast.LENGTH_SHORT).show();
             }
             case "dict:action"->{
                 if("permission".equals(panelAction))openPermission();
@@ -589,11 +600,17 @@ public class IosKeyboardService extends InputMethodService {
         else if(rawEditor)sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER);else if(correct)boundary("\n");else commit("\n");
     }
     private void startDictation(){
-        if(dictation!=null||!dictationPanel||!activeInput||getCurrentInputConnection()==null)return;
-        if(!microphoneAllowed()){setNotice("Allow microphone access to dictate.","permission");panelChanged();openPermission();return;}
+        if(dictation!=null||!(dictationPanel||inlineDictation)||!activeInput||getCurrentInputConnection()==null){inlineDictation=false;return;}
+        if(!microphoneAllowed()){
+            if(inlineDictation){inlineDictation=false;Toast.makeText(this,"Allow microphone access to dictate.",Toast.LENGTH_SHORT).show();openPermission();return;}
+            setNotice("Allow microphone access to dictate.","permission");panelChanged();openPermission();return;
+        }
         clearNotice();
         panelEngine=chooseEngine();
-        if(panelEngine==DictationMode.Engine.NONE){updatePanel();panelChanged();return;}
+        if(panelEngine==DictationMode.Engine.NONE){
+            if(inlineDictation){inlineDictation=false;Toast.makeText(this,SpeechEngine.supported(this)?"Download a speech model in SoftKeys settings.":"No speech recognition service is installed.",Toast.LENGTH_LONG).show();return;}
+            updatePanel();panelChanged();return;
+        }
         if(panelEngine==DictationMode.Engine.PHONE&&preferDevice()&&!fallbackNoticeShown){
             fallbackNoticeShown=true;
             Toast.makeText(this,SpeechEngine.supported(this)?"On-device model not downloaded. Using phone speech service.":"On-device dictation isn't supported here. Using phone speech service.",Toast.LENGTH_SHORT).show();
@@ -610,9 +627,24 @@ public class IosKeyboardService extends InputMethodService {
             public void level(DictationEngine session,float level){if(dictation==session)meter.target(level);}
             public void result(DictationEngine session,String text){
                 if(!current(session)){if(dictation==session)cancelDictation();return;}
-                boolean handoff=dictationHandoff;dictationHandoff=false;
+                if(smartCleanup(session)&&text!=null&&!text.trim().isEmpty()){
+                    // The recording stays open as Transcribing while the model edits the text.
+                    dictationFinishing=true;panelChanged();
+                    DictationCleanup.Options options=cleanupOptions();
+                    SmartEditor.edit(IosKeyboardService.this,text,options,edited->handler.post(()->{
+                        if(dictation!=session)return;
+                        if(!current(session)){cancelDictation();return;}
+                        finish(DictationCleanup.clean(edited,options));
+                    }));
+                    return;
+                }
+                finish(dictatedText(session,text));
+            }
+            private void finish(String text){
+                boolean handoff=dictationHandoff,inline=inlineDictation;dictationHandoff=false;
                 cancelDictation();
-                commitDictation(dictatedText(session,text));
+                String inserted=commitDictation(text);
+                if(inline&&!inserted.isEmpty()){undoText=inserted;panelChanged();}
                 if(handoff){decodingGlide=false;drainPendingActions();}
             }
             public void error(DictationEngine session,String message,String retainedText){
@@ -621,6 +653,7 @@ public class IosKeyboardService extends InputMethodService {
                 cancelDictation();
                 commitDictation(dictatedText(session,retainedText));
                 if(handoff){decodingGlide=false;drainPendingActions();Toast.makeText(IosKeyboardService.this,message,Toast.LENGTH_LONG).show();}
+                else if(!dictationPanel)Toast.makeText(IosKeyboardService.this,message,Toast.LENGTH_LONG).show();
                 else showDictationError(message);
             }
         };
@@ -630,8 +663,13 @@ public class IosKeyboardService extends InputMethodService {
             default->new DictationSession(this,listener);
         };
         dictation=session;recordingStart=SystemClock.uptimeMillis();meter.reset();
+        if(smartCleanup(session))SmartEditor.preload(this);
         panelChanged();session.start();
         announce("Recording");
+    }
+    /** True when smart cleanup edits this session's text: on-device speech, the Clean style, the setting on, and the model ready. */
+    private boolean smartCleanup(DictationEngine session){
+        return session.onDevice()&&prefs.getBoolean("dictationCleanup",true)&&prefs.getBoolean("smartCleanup",false)&&SmartEditor.ready(this);
     }
     /** The text to insert. On-device text gets the chosen style, and phone speech service text is inserted as it arrives. */
     private String dictatedText(DictationEngine session,String raw){
@@ -644,34 +682,53 @@ public class IosKeyboardService extends InputMethodService {
     private DictationCleanup.Options cleanupOptions(){
         DictationCleanup.Options options=new DictationCleanup.Options();
         options.spokenPunctuation=prefs.getBoolean("spokenPunctuation",true);
+        options.capitalize=prefs.getBoolean("autocaps",true);
+        options.formatLists=prefs.getBoolean("formatLists",true);
+        options.endWithPeriod=prefs.getBoolean("endPeriod",true);
+        options.lowercase=prefs.getBoolean("dictationLowercase",false);
         String rules=prefs.getString("dictationReplacements","");
         options.replacements=DictationCleanup.parseReplacements(rules);
         options.vocabulary=DictationCleanup.parseVocabulary(rules);
+        if(prefs.getBoolean("vocabularyEnabled",true)){
+            // The custom vocabulary list holds one word or phrase per line.
+            String words=prefs.getString("dictationVocabulary","");
+            options.replacements.addAll(DictationCleanup.vocabularyRules(java.util.Arrays.asList(words.split("\n"))));
+            for(String word:DictationCleanup.parseVocabulary(words))if(!options.vocabulary.contains(word))options.vocabulary.add(word);
+        }
         EnglishDictionary dict=dictionary;
-        if(dict!=null)options.knownWord=dict::contains;
+        if(dict!=null){options.knownWord=dict::contains;options.lowercaseWord=dict::commonLowercase;}
         int end=before.length();
         while(end>0&&before.charAt(end-1)==' ')end--;
         char previous=end==0?'\n':before.charAt(end-1);
         options.startsSentence=!terminalEditor&&!emailField&&!uriField&&(previous=='\n'||".!?".indexOf(previous)>=0);
         return options;
     }
-    private void commitDictation(String text){
-        if(text.isEmpty())return;
+    /** Inserts dictated text with the spaces it needs, and returns what was inserted. */
+    private String commitDictation(String text){
+        if(text.isEmpty())return "";
         boolean space=!terminalEditor&&!emailField&&!uriField;
         char previous=before.length()==0?' ':before.charAt(before.length()-1);
         String lead=space&&selectionLength==0&&!Character.isWhitespace(previous)&&(Character.isLetterOrDigit(previous)||".!?,;:".indexOf(previous)>=0)?" ":"";
-        commit(lead+text+(space?" ":""));
+        String inserted=lead+text+(space?" ":"");
+        commit(inserted);
+        return inserted;
     }
     private void stopDictation(){if(dictation!=null)dictation.stop();}
     private void cancelDictation(){
         boolean changed=dictation!=null;
         DictationEngine previous=dictation;dictation=null;dictationFinishing=false;
+        if(inlineDictation){inlineDictation=false;if(!dictationPanel)SpeechEngine.keep(false);}
         // A handoff that ends without text drops the keys typed while it waited.
         if(dictationHandoff){dictationHandoff=false;decodingGlide=false;pendingActions.clear();}
         if(previous!=null)previous.close();if(changed)panelChanged();
     }
     /** Typing cancels a recording, except one that is finishing after the user went back to the keys. Its text goes in first. */
-    private void cancelRecording(){if(!dictationHandoff)cancelDictation();}
+    private void cancelRecording(){
+        // Typing during dictation from the suggestion bar finishes the recording instead. Its
+        // text goes in first, and the typed keys wait and follow it.
+        if(inlineDictation&&dictation!=null&&!dictationHandoff){dictationHandoff=true;decodingGlide=true;stopDictation();return;}
+        if(!dictationHandoff)cancelDictation();
+    }
     private void showDictationError(String message){
         panelNotice=message;panelAction="dictate";panelNoticeIsError=true;
         handler.removeCallbacks(clearPanelNotice);handler.postDelayed(clearPanelNotice,8_000);
@@ -679,6 +736,36 @@ public class IosKeyboardService extends InputMethodService {
     }
     private void announce(String message){if(keyboard!=null)keyboard.announceForAccessibility(message);}
     private void panelChanged(){if(keyboard!=null)keyboard.panelChanged();}
+    /** The microphone, cancel, done, and Undo dictation buttons in the suggestion bar. */
+    private void pressInline(String value){
+        switch(value){
+            case "inline:mic"->{
+                if(dictation!=null||decodingGlide)return;
+                if(!fieldAllowsDictation()){Toast.makeText(this,"Dictation is unavailable in this field",Toast.LENGTH_SHORT).show();return;}
+                undoText=null;dismissClipboardSuggestion();
+                inlineDictation=true;
+                DictationMode.Engine engine=chooseEngine();
+                if(engine.onDevice()){SpeechEngine.keep(true);SpeechEngine.preload(this,model(engine));}
+                startDictation();
+                if(dictation==null){inlineDictation=false;SpeechEngine.keep(false);}
+                panelChanged();
+            }
+            case "inline:cancel"->{if(dictation!=null&&inlineDictation){cancelDictation();announce("Dictation cancelled");}}
+            case "inline:done"->{if(dictation!=null&&inlineDictation&&!dictationFinishing)stopDictation();}
+            case "inline:undo"->{
+                String text=undoText;undoText=null;panelChanged();
+                InputConnection ic=getCurrentInputConnection();
+                if(text==null||ic==null)return;
+                CharSequence previous=ic.getTextBeforeCursor(text.length(),0);
+                if(previous==null||!previous.toString().equals(text)||selectionLength>0)return;
+                if(!ic.deleteSurroundingText(text.length(),0))return;
+                clearCorrection();glideLength=0;lastSpace=0;autoSpaceCaret=-1;
+                int keep=Math.max(0,before.length()-text.length());before.setLength(keep);caret=Math.max(0,caret-text.length());noteEdit();
+                announce("Dictation removed");
+            }
+            default->{}
+        }
+    }
     private String accents(String s){return switch(s){case "a"->"à á â ä æ ã å ā";case "e"->"è é ê ë ē";case "i"->"ì í î ï ī";case "o"->"ò ó ô ö õ ø œ ō";case "u"->"ù ú û ü ū";case "n"->"ñ ń";case "c"->"ç ć č";case "s"->"ß ś š";case "y"->"ý ÿ";default->"";};}
     private void showVariants(Key key,List<String> values,boolean replace){
         LinearLayout row=new LinearLayout(this);row.setPadding(dp(4),dp(4),dp(4),dp(4));android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(special);bg.setCornerRadius(dp(10));row.setBackground(bg);
@@ -752,7 +839,17 @@ public class IosKeyboardService extends InputMethodService {
             keys.clear();if(width<=0)return;
             if(dictationPanel){arrangePanel();invalidate();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);return;}
             if(emojiSearching){keys.add(new Key("emojiquery",0,0,width*.8f,suggestionH,true));keys.add(new Key("emojidone",width*.8f,0,width,suggestionH,true));}
-            else if(!numeric&&!emoji&&allowPredictions){for(int i=0;i<3;i++)keys.add(new Key("suggest:"+i,width*i/3,0,width*(i+1)/3,suggestionH,true));}
+            else if(!numeric&&!emoji&&allowPredictions){
+                // The microphone sits at the right end of the suggestion bar when the field allows dictation.
+                float strip=fieldAllowsDictation()?width-dp(46):width;
+                for(int i=0;i<3;i++)keys.add(new Key("suggest:"+i,strip*i/3,0,strip*(i+1)/3,suggestionH,true));
+                if(strip<width){
+                    keys.add(new Key("inline:mic",strip,0,width,suggestionH,true));
+                    keys.add(new Key("inline:cancel",width-dp(92),0,width-dp(46),suggestionH,true));
+                    keys.add(new Key("inline:done",width-dp(46),0,width,suggestionH,true));
+                    keys.add(new Key("inline:undo",0,0,strip,suggestionH,true));
+                }
+            }
             if(numeric){float w=Math.min(width,dp(420)),l=(width-w)/2;row(new String[]{"1","2","3"},0,l,w,null);row(new String[]{"4","5","6"},1,l,w,null);row(new String[]{"7","8","9"},2,l,w,null);row(new String[]{".","0","delete","return"},3,l,w,null);}
             else if(emoji){
                 keys.add(new Key("emojisearch",0,0,width,suggestionH,true));
@@ -816,19 +913,33 @@ public class IosKeyboardService extends InputMethodService {
             for(int i=0;i<labels.length;i++){float end=x+w*(weights==null?1:weights[i])/total;String s=labels[i];keys.add(new Key(s,x,y,end,y+rowH,s.length()>1&&!s.equals("space")));x=end;}
         }
         void invalidateHeader(){invalidate(0,0,getWidth(),(int)suggestionH+1);}
+        /** The right edge of the suggestions, which is left of the microphone when it shows. */
+        private float stripRight(){for(Key k:keys)if(k.value.equals("suggest:2"))return k.box.right;return width;}
         void clipboardChanged(){
             if(focused>=0&&focused<keys.size()&&!keyVisible(keys.get(focused)))focused=-1;
             invalidateHeader();sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
+        private boolean inlineRecording(){return inlineDictation&&dictation!=null&&!dictationPanel;}
         private boolean keyVisible(Key key){
             if(dictationPanel)return panelKeyVisible(key.value);
+            String v=key.value;
+            if(v.startsWith("inline:")||v.startsWith("suggest:")){
+                boolean recording=inlineRecording(),undo=!recording&&undoText!=null;
+                switch(v){
+                    case "inline:mic":return !recording;
+                    case "inline:cancel":case "inline:done":return recording;
+                    case "inline:undo":return undo;
+                    default:if(recording||undo)return false;
+                }
+            }
             return !clipboardVisible()||!key.value.equals("suggest:1");
         }
         private void keyBounds(Key key,RectF bounds){
             bounds.set(key.box);
             if(clipboardVisible()){
-                if(key.value.equals("suggest:0"))bounds.right=width-dp(48);
-                else if(key.value.equals("suggest:2"))bounds.left=width-dp(48);
+                float strip=stripRight();
+                if(key.value.equals("suggest:0"))bounds.right=strip-dp(48);
+                else if(key.value.equals("suggest:2"))bounds.left=strip-dp(48);
             }
         }
         void invalidateLetters(){invalidate(0,(int)suggestionH,getWidth(),Math.round(suggestionH+rowH*(3+numberRowOffset())));}
@@ -839,7 +950,7 @@ public class IosKeyboardService extends InputMethodService {
             if(k.value.startsWith("suggest:")){int i=Integer.parseInt(k.value.substring(8));if(clipboardVisible())return i==0?"Paste "+clipboardPreview:i==2?"Dismiss clipboard suggestion":"";return i>=suggestions.length?"":i==0&&correctionPending?"\""+suggestions[i]+"\"":suggestions[i];}
             if(k.value.startsWith("em:"))return k.value.substring(3);
             if(k.value.startsWith("cat:"))return EmojiCatalog.ICONS[Integer.parseInt(k.value.substring(4))];
-            return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->"Start dictation";
+            return switch(k.value){case "shift"->caps?"Caps lock":"Shift";case "delete"->"Delete";case "space"->"Space";case "emoji"->"Emoji";case "voice"->"Start dictation";case "inline:mic"->"Dictate with the keyboard showing";case "inline:cancel"->"Cancel dictation";case "inline:done"->dictationFinishing?"Transcribing":"Done";case "inline:undo"->"Undo dictation";
                 case "dict:style"->"Dictation style, "+(prefs.getBoolean("dictationCleanup",true)?"Clean":"Verbatim");
                 case "dict:start"->"Dictate";
                 case "dict:action"->panelNotice==null?actionText():panelNotice+" "+actionText();
@@ -850,6 +961,7 @@ public class IosKeyboardService extends InputMethodService {
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);canvas.save();canvas.clipPath(surface);paint.setColor(background);paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);canvas.drawPath(surface,paint);paint.setTypeface(normal);
             if(dictationPanel)drawPanel(canvas);
+            else if(inlineRecording())drawRibbon(canvas,dp(16),width-dp(104),suggestionH/2,suggestionH-dp(12),stage(),SystemClock.uptimeMillis());
             boolean sliding=emoji&&emojiOffset!=0;
             for(Key k:keys){
                 if(sliding&&k.value.startsWith("em:"))continue;
@@ -867,6 +979,7 @@ public class IosKeyboardService extends InputMethodService {
             for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.gliding)drawTrail(canvas,t.points);}
             // The timer, the meter, and the Transcribing spinner move while a recording is open.
             if(dictationPanel&&dictation!=null)postInvalidateOnAnimation(0,0,getWidth(),Math.round(panelTopH+panelWellH));
+            if(inlineRecording())postInvalidateOnAnimation(0,0,getWidth(),Math.round(suggestionH)+1);
             if(focused>=0&&focused<keys.size()&&keyVisible(keys.get(focused))){paint.setColor(0xff69a9ff);paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));keyBounds(keys.get(focused),rect);canvas.drawRoundRect(rect,keyRadius,keyRadius,paint);paint.setStyle(Paint.Style.FILL);}
             canvas.restore();
         }
@@ -924,6 +1037,7 @@ public class IosKeyboardService extends InputMethodService {
             boolean pressed=false;for(int i=0;i<touches.size();i++){Touch t=touches.valueAt(i);if(t.highlight==k&&!t.gliding)pressed=true;}
             paint.setStyle(Paint.Style.FILL);paint.setColor(foreground);paint.setAlpha(255);
             if(k.value.startsWith("dict:")){drawPanelKey(canvas,k,pressed);return;}
+            if(k.value.startsWith("inline:")){drawInlineKey(canvas,k,pressed);return;}
             // Space, Delete, and Return wait while a recording is open, so they are dimmed.
             boolean dim=dictationPanel&&dictation!=null;
             if(dim)canvas.saveLayerAlpha(k.box.left,k.box.top,k.box.right,k.box.bottom,105);
@@ -994,9 +1108,9 @@ public class IosKeyboardService extends InputMethodService {
             c.drawRoundRect(well,well.height()/2,well.height()/2,paint);
             float wy=well.centerY(),maxBar=well.height()-dp(22);
             switch(stage){
-                case RECORDING->drawMeter(c,well.left+dp(58),well.right-dp(104),wy,maxBar,true,now);
-                case TRANSCRIBING->drawMeter(c,well.left+dp(58),well.right-dp(104),wy,maxBar,false,now);
-                case IDLE->drawMeter(c,well.left+dp(18),well.right-dp(140),wy,maxBar,false,now);
+                case RECORDING->drawRibbon(c,well.left+dp(58),well.right-dp(104),wy,maxBar,RECORDING,now);
+                case TRANSCRIBING->drawRibbon(c,well.left+dp(58),well.right-dp(104),wy,maxBar,TRANSCRIBING,now);
+                case IDLE->drawRibbon(c,well.left+dp(18),well.right-dp(140),wy,maxBar,IDLE,now);
                 default->{
                     paint.setColor(foreground);paint.setTextSize(dp(13));
                     int available=Math.max(1,Math.round(well.width()-dp(160)));
@@ -1007,26 +1121,85 @@ public class IosKeyboardService extends InputMethodService {
             }
             paint.setAlpha(255);paint.setStyle(Paint.Style.FILL);
         }
+        private float ribbonLevel;
+        private double ribbonPhase;
+        private long ribbonFrame;
+        private final DictationMode.Voice voice=new DictationMode.Voice();
         /**
-         * The level meter. Each bar is one 50 ms step, the newest on the right, and the bars
-         * scroll left smoothly between steps. Silence and the idle panel show a row of dots.
+         * The recording waves: three dotted sine waves with the same length that cross one
+         * another, so they look like a twisted ribbon. While recording, silence draws a nearly
+         * flat, dim line, and speech raises the waves to full height and brightness and makes
+         * them move faster. They fade toward both ends, settle into a low shimmer while
+         * transcribing, and lie flat as a dotted line when idle.
          */
-        private void drawMeter(Canvas c,float left,float right,float cy,float maxHeight,boolean live,long now){
+        private void drawRibbon(Canvas c,float left,float right,float cy,float maxHeight,int mode,long now){
             if(right-left<dp(24))return;
-            float spacing=dp(4.5f),bar=dp(2.6f),fade=dp(26);
-            if(live)meter.advance(now);
-            float shift=live?meter.fraction(now)*spacing:0;
+            if(mode==RECORDING)meter.advance(now);
+            if(mode!=RECORDING)voice.reset();
+            float activity=mode==RECORDING?voice.update(meter.level()):0;
+            float goal=mode==RECORDING?.05f+.95f*activity:mode==TRANSCRIBING?.12f:0;
+            // The idle panel is drawn once, not animated, so it starts flat. Speech raises the
+            // waves quickly, and they fall back a little more slowly when it stops.
+            ribbonLevel=mode==IDLE?0:ribbonLevel+(goal-ribbonLevel)*(goal>ribbonLevel?.5f:.18f);
+            double seconds=ribbonFrame==0?0:Math.min(.1,(now-ribbonFrame)/1000.0);
+            ribbonFrame=mode==IDLE?0:now;
+            ribbonPhase+=seconds*(mode==TRANSCRIBING?3.2:1.2+5*ribbonLevel);
+            float width=right-left,spacing=dp(2.6f),radius=dp(.95f)+dp(.35f)*ribbonLevel,amplitude=maxHeight/2*ribbonLevel;
+            double wavelength=Math.max(dp(70),width/2.6);
+            float brightness=mode==RECORDING?.4f+.6f*Math.min(1,ribbonLevel*1.6f):1;
+            float[] strength={1f,.62f,.38f};
             paint.setStyle(Paint.Style.FILL);paint.setColor(foreground);
-            for(int i=0;i<meter.size();i++){
-                float x=right-dp(3)-i*spacing-shift;
-                if(x<left)break;
-                float level=dictation!=null?meter.bar(i):0;
-                float h=Math.max(bar,level*maxHeight);
-                float edge=Math.max(0,Math.min(1,Math.min((x-left)/fade,(right-x)/dp(8)+.4f)));
-                paint.setAlpha(Math.round(255*(live?.92f:.3f)*edge));
-                c.drawRoundRect(x-bar/2,cy-h/2,x+bar/2,cy+h/2,bar/2,bar/2,paint);
+            for(int strand=0;strand<3;strand++){
+                if(mode==IDLE&&strand>0)break;
+                double phase=strand*2*Math.PI/3+ribbonPhase*(1+strand*.15);
+                float height=amplitude*(1-strand*.14f);
+                float alpha=mode==IDLE?.3f:.92f*strength[strand]*brightness;
+                for(float x=left;x<=right;x+=spacing){
+                    double t=(x-left)/width;
+                    float envelope=(float)Math.sin(Math.PI*t);
+                    float y=cy+(float)(height*envelope*Math.sin(2*Math.PI*(x-left)/wavelength+phase));
+                    float edge=Math.min(1,Math.min((x-left)/dp(14),(right-x)/dp(14)));
+                    paint.setAlpha(Math.round(255*alpha*Math.max(0,edge)));
+                    c.drawCircle(x,y,radius,paint);
+                }
             }
             paint.setAlpha(255);
+        }
+        /** The microphone, cancel, done, and Undo dictation buttons in the suggestion bar. */
+        private void drawInlineKey(Canvas c,Key k,boolean pressed){
+            float cx=k.box.centerX(),cy=k.box.centerY(),r=Math.min(dp(15),suggestionH/2-dp(3));
+            switch(k.value){
+                case "inline:mic"->{
+                    if(pressed){paint.setColor(blend(background,foreground,.12f));c.drawCircle(cx,cy,r+dp(2),paint);}
+                    drawIcon(c,"voice",cx,cy,dp(20));
+                }
+                case "inline:cancel"->{
+                    paint.setColor(pressed?blend(special,foreground,.14f):darkSurface()?special:keyColor);c.drawCircle(cx,cy,r,paint);
+                    paint.setColor(foreground);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1.7f));paint.setStrokeCap(Paint.Cap.ROUND);
+                    float a=r*.36f;c.drawLine(cx-a,cy-a,cx+a,cy+a,paint);c.drawLine(cx+a,cy-a,cx-a,cy+a,paint);paint.setStyle(Paint.Style.FILL);
+                }
+                case "inline:done"->{
+                    paint.setColor(pressed?blend(foreground,background,.2f):foreground);c.drawCircle(cx,cy,r,paint);
+                    paint.setColor(background);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1.9f));paint.setStrokeCap(Paint.Cap.ROUND);
+                    if(dictationFinishing){
+                        // A turning arc while the recording is transcribed.
+                        float a=r*.5f;rect.set(cx-a,cy-a,cx+a,cy+a);
+                        c.drawArc(rect,(SystemClock.uptimeMillis()%1000)*.36f,270,false,paint);
+                    }else{
+                        float a=r*.42f;c.drawLine(cx-a,cy,cx-a*.3f,cy+a*.7f,paint);c.drawLine(cx-a*.3f,cy+a*.7f,cx+a,cy-a*.6f,paint);
+                    }
+                    paint.setStyle(Paint.Style.FILL);
+                }
+                case "inline:undo"->{
+                    paint.setTextSize(dp(14.5f));paint.setTypeface(medium);
+                    String text="↶  Undo dictation";
+                    float w=paint.measureText(text)+dp(28);
+                    rect.set(cx-w/2,cy-r,cx+w/2,cy+r);
+                    paint.setColor(pressed?blend(keyColor,foreground,.12f):keyColor);c.drawRoundRect(rect,r,r,paint);
+                    paint.setColor(foreground);drawText(c,text,cx,cy);paint.setTypeface(normal);
+                }
+                default->{}
+            }
         }
         private void drawPanelKey(Canvas c,Key k,boolean pressed){
             float cy=well.centerY(),half=dp(20);
@@ -1034,7 +1207,10 @@ public class IosKeyboardService extends InputMethodService {
                 case "dict:style"->{
                     paint.setColor(muted());paint.setTextSize(dp(14));paint.setTextAlign(Paint.Align.RIGHT);
                     float chevron=k.box.right-dp(12),mid=k.box.centerY();
-                    String text=prefs.getBoolean("dictationCleanup",true)?"Clean":"Verbatim";
+                    boolean verbatim=!prefs.getBoolean("dictationCleanup",true);
+                    String text=verbatim?"Verbatim":"Clean";
+                    // Verbatim turns off most of the cleanup, so it stands out in orange.
+                    if(verbatim)paint.setColor(darkSurface()?0xffff9f0a:0xffc65f00);
                     if(pressed){paint.setColor(blend(background,foreground,.12f));float w=paint.measureText(text)+dp(34);rect.set(k.box.right-w,mid-dp(14),k.box.right,mid+dp(14));c.drawRoundRect(rect,dp(14),dp(14),paint);paint.setColor(muted());}
                     c.drawText(text,chevron-dp(9),mid-(paint.ascent()+paint.descent())/2,paint);
                     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1.6f));paint.setStrokeCap(Paint.Cap.ROUND);
@@ -1172,7 +1348,7 @@ public class IosKeyboardService extends InputMethodService {
                 boolean multiple=touches.size()>0;
                 for(int i=0;i<touches.size();i++){Touch previous=touches.valueAt(i);previous.multi=true;if(previous.hold!=null)handler.removeCallbacks(previous.hold);if(!previous.gliding&&letter(previous.key))commitTouch(previous);}
                 Key key=hit(e.getX(index),e.getY(index));if(key==null)return true;
-                if(!dictationPanel&&!key.value.equals("voice")&&!key.value.startsWith("suggest:"))cancelRecording();
+                if(!dictationPanel&&!key.value.equals("voice")&&!key.value.startsWith("suggest:")&&!key.value.startsWith("inline:"))cancelRecording();
                 Touch t=new Touch(key,e.getX(index),e.getY(index));t.multi=multiple;touches.put(id,t);
                 haptic(false);if(multiple)hidePreview();else showPreview(t,id);
                 // Letters wait for release so a touch can become a glide without inserting its first letter.

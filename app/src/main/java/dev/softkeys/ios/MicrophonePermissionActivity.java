@@ -2,7 +2,6 @@ package dev.softkeys.ios;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -22,16 +21,17 @@ public class MicrophonePermissionActivity extends Activity {
         requesting=state!=null&&state.getBoolean("requesting",false);
         if(requesting)return;
         boolean asked=getPreferences(MODE_PRIVATE).getBoolean("asked",false);
-        new AlertDialog.Builder(this).setTitle("Enable dictation")
-            .setMessage("SoftKeys needs microphone access for dictation. On-device dictation keeps audio on your phone. The phone speech service processes audio and may send it to its provider. After granting access, return to your text field and tap Dictate to begin.")
-            .setPositiveButton(asked&&!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)?"Open settings":"Continue",(dialog,which)->{
-                if(asked&&!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)){
+        boolean settings=asked&&!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO);
+        new Ui.Sheet(this,Ui.Palette.of(this)).title("Enable dictation")
+            .message("SoftKeys needs microphone access for dictation. On-device dictation keeps audio on your phone. The phone speech service processes audio and may send it to its provider. After granting access, return to your text field and tap Dictate to begin.")
+            .action(settings?"Open settings":"Continue",Ui.Sheet.Style.BOLD,()->{
+                if(settings){
                     startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));finish();
                 }else{
                     getPreferences(MODE_PRIVATE).edit().putBoolean("asked",true).apply();
                     requesting=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},1);
                 }
-            }).setNegativeButton("Cancel",(dialog,which)->finish()).setOnCancelListener(dialog->finish()).show();
+            }).onCancel(this::finish).show();
     }
     @Override public void onSaveInstanceState(Bundle state){state.putBoolean("requesting",requesting);super.onSaveInstanceState(state);}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){

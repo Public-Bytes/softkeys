@@ -17,7 +17,7 @@ import javax.net.ssl.HttpsURLConnection;
 /**
  * Downloads, verifies, and deletes the on-device speech models.
  *
- * There are two models. High accuracy is NVIDIA Parakeet TDT 0.6B v2, which decodes the
+ * There are two speech models, and one text model for smart cleanup. High accuracy is NVIDIA Parakeet TDT 0.6B v2, which decodes the
  * whole recording after Done. Fast is the streaming FastConformer model from 1.11, which
  * decodes while the user speaks. See docs/dictation-benchmark.md for the measurements.
  *
@@ -27,7 +27,7 @@ import javax.net.ssl.HttpsURLConnection;
  * checked against the sizes and SHA-256 digests below before they can be used.
  */
 final class SpeechModel {
-    enum Kind {STREAMING,BATCH}
+    enum Kind {STREAMING,BATCH,EDITOR}
     enum State {ABSENT,DOWNLOADING,READY,FAILED}
     interface Listener {void changed();}
 
@@ -48,6 +48,15 @@ final class SpeechModel {
             {"tokens.txt",11_896L,"618dc110fc2213886b52e063ff42329bbdf37a266ca7705184090fa5f39f3131"},
         });
     static final SpeechModel[] ALL={ACCURATE,FAST};
+    /**
+     * The optional smart cleanup model, not a speech model: Handy Editor 350M, a fine-tune of
+     * LiquidAI LFM2.5-350M (LFM Open License v1.0) that edits dictated text. See SmartEditor.
+     */
+    static final SpeechModel EDITOR=new SpeechModel("editor","Smart cleanup","Handy Editor 350M (LFM2.5-350M fine-tune), Q4_K_M",Kind.EDITOR,
+        "https://huggingface.co/MagicNoThief/handy-editor-lfm2.5-350m","f1f01e16ab10143f51ffb0fb180ac715dcef964e","handy-editor-350m-",
+        new Object[][]{
+            {"handy-editor-350m-Q4_K_M.gguf",229_315_072L,"eace6ae31325690abe7a731b02b6d6b92ca9ca8b479b94fe1a6f6bfbefb41356"},
+        });
 
     /** The value saved in the speechModel preference. */
     final String id;
@@ -123,7 +132,7 @@ final class SpeechModel {
     /** Deletes the model. The keyboard uses the other model or the phone's speech service afterwards. */
     void delete(Context context){
         synchronized(this){if(state==State.DOWNLOADING)return;}
-        SpeechEngine.release();
+        if(kind==Kind.EDITOR)SmartEditor.release();else SpeechEngine.release();
         deleteTree(directory(context));
         deleteTree(temporary(context));
         synchronized(this){state=State.ABSENT;received=0;failure="";}

@@ -57,10 +57,49 @@ def prepareSherpaOnnx = tasks.register('prepareSherpaOnnx') {
     }
 }
 
+// Smart cleanup runs an optional text model with llama.cpp (MIT). The build downloads the
+// pinned release source once, checks its SHA-256, unpacks it in the Gradle cache, and
+// CMake in src/main/cpp builds it into libsoftkeys-editor.so. No model is bundled.
+def llamaVersion = 'b9893'
+def llamaUrl = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/${llamaVersion}.tar.gz"
+def llamaSha256 = '0ac4428d16e1f793d594f10700e6e7abc5f76b7b7d37435833caacf47e3f3eae'
+def llamaRoot = new File(gradle.gradleUserHomeDir, "caches/softkeys/llama.cpp-${llamaVersion}")
+def llamaSource = new File(llamaRoot, "llama.cpp-${llamaVersion}")
+
+def prepareLlama = tasks.register('prepareLlama') {
+    inputs.property('url', llamaUrl)
+    inputs.property('sha256', llamaSha256)
+    outputs.dir(llamaRoot)
+    doLast {
+        File marker = new File(llamaRoot, '.verified')
+        if (marker.isFile() && new File(llamaSource, 'CMakeLists.txt').isFile()) return
+        File archive = new File(gradle.gradleUserHomeDir, "caches/softkeys/llama.cpp-${llamaVersion}.tar.gz")
+        if (!archive.isFile() || sha256(archive) != llamaSha256) {
+            archive.parentFile.mkdirs()
+            File part = new File(archive.path + '.part')
+            new URL(llamaUrl).openStream().withCloseable { input -> part.withOutputStream { it << input } }
+            String actual = sha256(part)
+            if (actual != llamaSha256) {
+                part.delete()
+                throw new GradleException("llama.cpp ${llamaVersion} checksum mismatch: ${actual}")
+            }
+            if (!part.renameTo(archive)) throw new GradleException("Could not save ${archive}")
+        }
+        project.delete(llamaRoot)
+        copy { from tarTree(resources.gzip(archive)); into llamaRoot }
+        marker.text = llamaSha256
+    }
+}
+
 android {
     namespace 'dev.softkeys.ios'
     compileSdk 36
-    defaultConfig { applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 15; versionName '1.14' }
+    defaultConfig {
+        applicationId 'dev.softkeys.ios'; minSdk 26; targetSdk 35; versionCode 16; versionName '1.15'
+        externalNativeBuild { cmake { arguments "-DLLAMA_SOURCE_DIR=${llamaSource.absolutePath}", '-DANDROID_STL=c++_static'; targets 'softkeys-editor' } }
+    }
+    ndkVersion '29.0.14206865'
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.31.6' } }
     buildTypes {
         // Release builds carry only the 64-bit ARM library, about 9 MB compressed. Phones without
         // it, including 32-bit phones, use the phone speech service. x86_64 is for emulator testing.
@@ -73,4 +112,4 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
-tasks.named('preBuild') { dependsOn prepareSherpaOnnx }
+tasks.named('preBuild') { dependsOn prepareSherpaOnnx, prepareLlama }

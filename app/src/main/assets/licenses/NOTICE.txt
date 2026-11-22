@@ -33,4 +33,16 @@ https://huggingface.co/nvidia/stt_en_fastconformer_hybrid_large_streaming_multi
 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8
 Licensed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/ . See CC-BY-4.0.txt. SoftKeys does not modify the model files.
 
+Smart cleanup engine: llama.cpp b9893, Copyright (c) 2023 to 2026 The ggml authors.
+https://github.com/ggml-org/llama.cpp
+Licensed under the MIT License. See MIT.txt.
+SoftKeys builds llama.cpp and ggml from source into libsoftkeys-editor.so.
+
+Smart cleanup model, downloaded only when you choose to in SoftKeys settings and not included in the app.
+Handy Editor 350M, Q4_K_M, by the Handier contributors, fine-tuned from LiquidAI LFM2.5-350M.
+https://huggingface.co/MagicNoThief/handy-editor-lfm2.5-350m
+https://huggingface.co/LiquidAI/LFM2.5-350M
+Licensed under the LFM Open License v1.0. See LFM-1.0.txt. SoftKeys does not modify the model file.
+The model was trained on the Handy dictation-editing corpus, https://huggingface.co/datasets/MagicNoThief/handy-dictation-editing , CC BY 4.0, built from google-research-datasets/disfl_qa (CC BY 4.0), nyralabs/disfluency_speech_english (Apache-2.0), and amaai-lab/DisfluencySpeech (Apache-2.0). SoftKeys's correction benchmark downloads the corpus's held-out split and does not include it.
+
 Text cleanup rules and the layout of the dictation keyboard were written for SoftKeys after reading the cleanup steps and keyboard design in Hex, https://github.com/anomalyco/hex , MIT License. No Hex code is included.

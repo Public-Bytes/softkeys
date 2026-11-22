@@ -155,6 +155,16 @@ public final class EnglishDictionary {
     }
     /** True when the word, written with its apostrophes, is in the word list or was taught by the user. */
     public boolean contains(String word) { String lower = word.toLowerCase(Locale.US); return exact.containsKey(lower) || userExact.containsKey(lower); }
+    /**
+     * True when the word is common and written in lowercase, unlike "Monday". The word list
+     * stores many names in lowercase, such as "claude", so a word must appear at least
+     * {@link #COMMON_LOWERCASE} times. Names that need a capital at that count are in lexicon.tsv.
+     */
+    public boolean commonLowercase(String word) {
+        Entry entry = exact.get(word.toLowerCase(Locale.US));
+        return entry != null && entry.count >= COMMON_LOWERCASE && entry.word.chars().noneMatch(Character::isUpperCase);
+    }
+    static final long COMMON_LOWERCASE = 10000;
     /** True when some word in the list has exactly these letters, ignoring apostrophes. */
     public boolean containsLetters(String word) { return plainWords.contains(letters(word)); }
 

@@ -22,6 +22,18 @@ public final class DictationCleanup {
         public boolean spokenPunctuation=true;
         /** Capitalize the first word because the cursor is at the start of a sentence. */
         public boolean startsSentence=true;
+        /**
+         * The keyboard's Automatic capitalization setting. When it is off, sentences are not
+         * capitalized, and a common word that the model capitalized at the start of a
+         * sentence goes back to lowercase. "I", names, and acronyms keep their capitals.
+         */
+        public boolean capitalize=true;
+        /** Turn "first ... second ..." and "bullet ... bullet ..." into a list, one item per line. */
+        public boolean formatLists=true;
+        /** Keep the period at the end of the text. When false, a final period is dropped, and ? and ! stay. */
+        public boolean endWithPeriod=true;
+        /** Write everything in lowercase letters. */
+        public boolean lowercase=false;
         /** Pairs of {spoken phrase, written text}, from {@link #parseReplacements}. */
         public List<String[]> replacements=new ArrayList<>();
         /**
@@ -31,16 +43,29 @@ public final class DictationCleanup {
         public List<String> vocabulary=new ArrayList<>();
         /** True for known English words, which are never respelled. Sound matching is off when this is null. */
         public Predicate<String> knownWord;
+        /**
+         * True for common words that are normally written in lowercase, unlike "Monday" or a name.
+         * At a seam, only such words lose a capital. Seams keep their capitals when this is null.
+         */
+        public Predicate<String> lowercaseWord;
     }
 
     private DictationCleanup(){}
+
+    /**
+     * Marks the place where two separately decoded parts of a long recording were joined. The
+     * model starts every part with a capital, even in the middle of a sentence. The cleanup
+     * uses the mark to fix that and then removes it. It is the invisible separator character.
+     */
+    public static final String SEAM="\u2063";
 
     private static final String NEWLINE="\n",PARAGRAPH="\n\n";
     // Hesitation sounds that are never words in dictated English.
     private static final Pattern SOUND=Pattern.compile("u+m+|u+h+|uhm+|e+r+m+|er|h+m+|m{2,}");
     // A word cut off by the speaker, such as "th-" before "the".
     private static final Pattern FRAGMENT=Pattern.compile("[a-z]{1,3}-");
-    private static final String NUMBER_WORDS="zero oh one two three four five six seven eight nine ten eleven twelve hundred thousand";
+    private static final String NUMBER_WORDS="zero oh one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "+
+        "eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion";
     private static final Set<String> NUMBERS=words(NUMBER_WORDS);
     // Words that people repeat on purpose, so a doubled copy is kept.
     private static final Set<String> REPEATABLE=words("that had is very really so no yes yeah bye ha haha hey now well ok okay "+
@@ -92,6 +117,32 @@ public final class DictationCleanup {
         return words;
     }
 
+    private static final Pattern SPOKEN_MARK=Pattern.compile("(?i)\\b(comma|period|question mark|exclamation (mark|point)|full stop|colon|semicolon|new ?line|next line|new paragraph)\\b");
+
+    /** True when the text has a spoken punctuation word such as "comma" or "new line". */
+    public static boolean hasSpokenPunctuation(String text){return SPOKEN_MARK.matcher(text).find();}
+
+    /**
+     * The input for the smart cleanup model: fillers, repeats, seams, and the corrections the
+     * rules can find are removed, and the rest is written as lowercase words with no
+     * punctuation, which is the form the model was trained on.
+     */
+    public static String prepareForEditor(String raw,Options options){
+        if(raw==null)return "";
+        List<String> tokens=tokenize(raw.trim());
+        seams(tokens,null);
+        removeFillers(tokens,false);
+        corrections(tokens,options.lowercaseWord);
+        collapseRepeats(tokens,false);
+        StringBuilder out=new StringBuilder();
+        for(String token:tokens){
+            if(punctuation(token))continue;
+            if(out.length()>0)out.append(' ');
+            out.append(lower(token).replace('’','\''));
+        }
+        return out.toString();
+    }
+
     /** Full cleanup for the text that will be inserted. */
     public static String clean(String raw,Options options){return run(raw,options,false,false);}
 
@@ -108,6 +159,27 @@ public final class DictationCleanup {
      */
     public static String preview(String raw,Options options){return run(raw,options,true,false).replace('\n',' ').replaceAll(" {2,}"," ").trim();}
 
+    /**
+     * Spoken forms for the custom vocabulary. Each entry fixes its own capitals, so "testflight"
+     * becomes "TestFlight", and a word written with inner capitals is also matched when spoken
+     * as separate words, so "swift ui" becomes "SwiftUI" and "open code" becomes "OpenCode".
+     * Returns pairs of {spoken phrase, written text}, like {@link #parseReplacements}.
+     */
+    public static List<String[]> vocabularyRules(List<String> vocabulary){
+        List<String[]> rules=new ArrayList<>();
+        if(vocabulary==null)return rules;
+        for(String entry:vocabulary){
+            String written=entry.trim().replaceAll("\\s+"," ");
+            if(written.isEmpty())continue;
+            String lower=written.toLowerCase(Locale.ROOT);
+            if(!lower.equals(written))rules.add(new String[]{lower,written});
+            // "SwiftUI" is spoken "swift ui", and "OpenCode" is spoken "open code".
+            String split=written.replaceAll("(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])"," ").toLowerCase(Locale.ROOT);
+            if(!split.equals(lower))rules.add(new String[]{split,written});
+        }
+        return rules;
+    }
+
     private static String run(String raw,Options options,boolean light,boolean verbatim){
         if(raw==null)return "";
         String text=raw.trim();
@@ -115,14 +187,324 @@ public final class DictationCleanup {
         // Some models write only capital letters. Lowercase them so capitalization can be rebuilt.
         if(text.chars().anyMatch(Character::isLetter)&&text.chars().noneMatch(Character::isLowerCase))text=text.toLowerCase(Locale.ROOT);
         List<String> tokens=tokenize(text);
+        seams(tokens,options.lowercaseWord);
         if(!verbatim){
             if(options.spokenPunctuation)spokenPunctuation(tokens);
             removeFillers(tokens,light);
+            // A partial result can still change, so the live preview never takes words back.
+            if(!light)corrections(tokens,options.lowercaseWord);
             collapseRepeats(tokens,light);
             replace(tokens,options.replacements);
             soundAlike(tokens,options.vocabulary,options.knownWord);
+            webAddresses(tokens);
+            if(options.formatLists&&!light)lists(tokens);
+            DictationNumbers.apply(tokens);
         }
-        return join(tokens,options.startsSentence);
+        String out=join(tokens,options.startsSentence,options.capitalize,options.lowercaseWord);
+        if(!options.endWithPeriod&&out.endsWith(".")&&!out.endsWith(".."))out=out.substring(0,out.length()-1);
+        if(options.lowercase)out=out.toLowerCase(Locale.ROOT);
+        return out;
+    }
+
+    /**
+     * Removes the seam marks. When the part before a seam does not end a sentence, the first
+     * word after it loses its capital if it is a word normally written in lowercase, so "with
+     * What features" becomes "with what features". "I", names, and unknown words keep theirs.
+     */
+    private static void seams(List<String> tokens,Predicate<String> lowercaseWord){
+        for(int i=0;i<tokens.size();){
+            if(!tokens.get(i).equals(SEAM)){i++;continue;}
+            tokens.remove(i);
+            if(lowercaseWord==null||i>=tokens.size()||i==0||sentenceEnd(tokens,i-1)||tokens.get(i-1).equals(SEAM))continue;
+            String word=tokens.get(i);
+            String lower=lower(word).replace('’','\'');
+            if(lower.equals("i")||lower.startsWith("i'"))continue;
+            if(!word.equals(decapitalize(word))&&lowercaseWord.test(lower))tokens.set(i,decapitalize(word));
+        }
+    }
+
+    // Phrases that take back what came before them. A strong phrase acts even when the
+    // correction shares no words with the earlier text. A paused phrase, such as "make that",
+    // is also ordinary English ("make that call"), so it must follow a comma or sentence end,
+    // and it acts only when the correction matches earlier text. A weak phrase, such as
+    // "I mean", is common in ordinary speech, so it acts only when the correction repeats at
+    // least two earlier words. A delete phrase removes the sentence it ends.
+    private static final String[][] STRONG={{"actually","wait"},{"wait","actually"},{"wait","sorry"},{"no","wait"},{"wait","no"},
+        {"actually","no"},{"no","actually"},{"oh","wait"},{"no","sorry"},{"sorry","no"}};
+    private static final String[][] PAUSED={{"let","me","correct","that"},{"come","to","think","of","it"},{"on","second","thoughts"},
+        {"on","second","thought"},{"make","that"},{"i","meant"},{"never","mind"},{"nevermind"},{"ignore","that"},{"my","mistake"},
+        {"correction"}};
+    // A lone "wait", the words the model writes when it mishears it, and a lone "actually",
+    // "sorry", or "rather" after a pause are weak phrases too.
+    private static final String[][] WEAK={{"sorry","i","mean"},{"i","mean"},{"or","rather"},{"wait"},{"weight"},{"wheat"},{"weigh"},
+        {"actually"},{"sorry"},{"rather"}};
+    private static final Set<String> AFTER_PAUSE=words("actually sorry rather");
+    private static final Set<String> LEADING=words("sorry actually wait no oh okay ok");
+    private static final String[][] DELETE={{"scratch","that"},{"strike","that"},{"delete","that"}};
+    private static final Set<String> SMALL_WORDS=words("the a an to and i it is of in on at he she we you they that this so but or for with my your");
+
+    private static int trailing(List<String> tokens,int i){int n=0;while(i+n<tokens.size()&&punctuation(tokens.get(i+n))&&!newline(tokens.get(i+n)))n++;return n;}
+
+    /** The index after a phrase that starts at i, with punctuation between and after its words, or -1. */
+    private static int phrase(List<String> tokens,int i,String[] words){
+        int j=i;
+        for(String w:words){
+            while(j<tokens.size()&&punctuation(tokens.get(j))&&j>i)j++;
+            if(!word(tokens,j,w))return -1;
+            j++;
+        }
+        // The model may end a sentence at the phrase, as in "more than wheat. I like coffee".
+        while(j<tokens.size()&&punctuation(tokens.get(j))&&!newline(tokens.get(j)))j++;
+        return j;
+    }
+
+    /**
+     * Takes back what the speaker corrected. "there are two things, actually wait, there are
+     * three things" keeps only the second version. First, it finds a correction phrase. Second,
+     * it reads the words after the phrase and looks back through the current and previous
+     * sentence for the latest place where the same words started. Third, it deletes from that
+     * place through the phrase. When no earlier words match, a strong phrase followed by up to
+     * three words replaces the same number of words before it, as in "at five, no wait, six".
+     */
+    private static void corrections(List<String> tokens,Predicate<String> lowercaseWord){
+        for(int i=1;i<tokens.size();i++){
+            if(punctuation(tokens.get(i)))continue;
+            int end=-1,kind=0;
+            for(String[] cue:DELETE)if(end<0&&(end=phrase(tokens,i,cue))>=0)kind=3;
+            for(String[] cue:STRONG)if(end<0&&(end=phrase(tokens,i,cue))>=0)kind=2;
+            for(String[] cue:PAUSED)if(end<0&&(end=phrase(tokens,i,cue))>=0)kind=4;
+            for(String[] cue:WEAK)if(end<0&&(end=phrase(tokens,i,cue))>=0)kind=1;
+            if(end<0)continue;
+            // A phrase often follows another, as in "February, sorry, make that May". The earlier
+            // words become part of the phrase.
+            int cue=i;
+            while(cue>=2){
+                int k=cue-1;
+                while(k>0&&tokens.get(k).equals(","))k--;
+                if(!LEADING.contains(lower(tokens.get(k))))break;
+                cue=k;
+            }
+            if(cue==0)continue;
+            // "I actually like it" and "I'd rather go" are not corrections, so these words must follow a pause.
+            boolean pause=punctuation(tokens.get(cue-1));
+            if(kind==4&&!pause)continue;
+            if(kind==1&&end==i+1+trailing(tokens,i+1)&&AFTER_PAUSE.contains(lower(tokens.get(i)))&&!pause)continue;
+            int before=cue-1;
+            while(before>=0&&tokens.get(before).equals(","))before--;
+            if(before<0)continue;
+            int start;
+            // The model may end the sentence before the phrase: "forty chairs. Correction, nine chairs."
+            if(kind!=3)while(before>=0&&punctuation(tokens.get(before))&&!newline(tokens.get(before)))before--;
+            if(before<0)continue;
+            if(kind==3){
+                // Delete the sentence the phrase ends, or the one before it when the phrase starts a sentence.
+                int from=sentenceEnd(tokens,before)?before-1:before;
+                start=from+1;
+                while(start>0&&!sentenceEnd(tokens,start-1))start--;
+                if(end<tokens.size()&&sentenceEnd(tokens,end)&&!newline(tokens.get(end)))end++;
+            }else{
+                List<String> said=new ArrayList<>();
+                for(int j=end;j<tokens.size()&&!punctuation(tokens.get(j));j++)said.add(lower(tokens.get(j)));
+                if(said.isEmpty())continue;
+                start=clause(tokens,before,said);
+                if(start<0)start=anchor(tokens,before,said,kind==1?2:1);
+                // The last few words before the phrase start with the same word as the correction:
+                // "the red one, I mean the blue one" or "the session, sorry, the lab and I'll update it".
+                for(int n=Math.min(4,said.size());start<0&&n>=2;n--){
+                    int p=before-(n-1);
+                    boolean same=p>=0&&lower(tokens.get(p)).equals(said.get(0));
+                    for(int k=p;same&&k<=before;k++)same=!punctuation(tokens.get(k));
+                    if(same)start=p;
+                }
+                // One word for another, with the sentence going on after it: "on Tuesday, on second
+                // thought, Wednesday in the meantime". Only after a strong or paused phrase.
+                if(start<0&&kind!=1&&said.size()>1&&!SMALL_WORDS.contains(said.get(0))&&!SMALL_WORDS.contains(lower(tokens.get(before)))
+                    &&!NUMBERS.contains(said.get(0))&&sameCase(tokens.get(before),tokens.get(end)))start=before;
+                if(start<0){
+                    if(kind==1)continue;
+                    start=cue;
+                    int count=said.size();
+                    // "at five, no wait, six o'clock" replaces only the number.
+                    if(NUMBERS.contains(lower(tokens.get(before)))&&NUMBERS.contains(said.get(0))){
+                        count=0;
+                        while(before-count>=0&&NUMBERS.contains(lower(tokens.get(before-count))))count++;
+                    }
+                    if(count<=3){
+                        int k=before,words=0;
+                        while(k>=0&&!punctuation(tokens.get(k))&&words<count){k--;words++;}
+                        if(words==count)start=k+1;
+                    }
+                    // Only a strong phrase is removed on its own when nothing before it matches.
+                    if(start==cue&&kind==4)continue;
+                }
+            }
+            for(int k=start;k<end;k++)tokens.remove(start);
+            if(start<tokens.size()&&start>0&&!sentenceEnd(tokens,start-1)){
+                String word=tokens.get(start);
+                if(lowercaseWord!=null&&!word.equals(decapitalize(word))&&lowercaseWord.test(lower(word)))tokens.set(start,decapitalize(word));
+            }
+            i=Math.max(0,start-1);
+        }
+    }
+
+    /**
+     * A correction that ends with the same word as the phrase before it replaces that phrase,
+     * as in "five hundred dollars, actually four hundred fifty dollars". It replaces as many
+     * words as the correction has, but never goes back past a comma or the end of a sentence.
+     * The correction may have up to 8 words. Returns the start of the replaced words, or -1.
+     */
+    private static int clause(List<String> tokens,int last,List<String> said){
+        if(said.size()>8||last<0||punctuation(tokens.get(last))||!lower(tokens.get(last)).equals(said.get(said.size()-1)))return -1;
+        int start=last;
+        while(start>0&&!punctuation(tokens.get(start-1))&&last-start+1<said.size())start--;
+        return start;
+    }
+
+    /** True when both words start with a capital, as "Tuesday" and "Wednesday" do, or neither does. */
+    private static boolean sameCase(String a,String b){return Character.isUpperCase(a.charAt(0))==Character.isUpperCase(b.charAt(0));}
+
+    /** The latest index at or before last where the words of said start, matching at least min words, or -1. */
+    private static int anchor(List<String> tokens,int last,List<String> said,int min){
+        // Search back to the start of the sentence before the current one.
+        int lowest=last,ends=0;
+        while(lowest>0){
+            if(sentenceEnd(tokens,lowest-1)&&++ends==2)break;
+            lowest--;
+        }
+        int best=-1,bestLength=0;
+        for(int p=last;p>=Math.max(0,lowest);p--){
+            int k=0;
+            while(k<said.size()&&p+k<=last&&!punctuation(tokens.get(p+k))&&lower(tokens.get(p+k)).equals(said.get(k)))k++;
+            if(k>bestLength){best=p;bestLength=k;}
+        }
+        if(bestLength<min||bestLength==1&&SMALL_WORDS.contains(said.get(0)))return -1;
+        return best;
+    }
+
+    private static final String[] ORDINALS={"first","second","third","fourth","fifth","sixth","seventh","eighth","ninth","tenth"};
+    private static final String[] NUMBERED={"one","two","three","four","five","six","seven","eight","nine","ten"};
+
+    /** True when a list marker at i starts a clause: after punctuation, at the start, or after "and" or "then" that does. */
+    private static boolean clauseStart(List<String> tokens,int i){
+        if(i==0||punctuation(tokens.get(i-1)))return true;
+        String previous=lower(tokens.get(i-1));
+        return (previous.equals("and")||previous.equals("then"))&&(i==1||punctuation(tokens.get(i-2)));
+    }
+
+    /** The length of the list marker for item n (0 based) at i, or 0. */
+    private static int marker(List<String> tokens,int i,int n,int style){
+        String w=lower(tokens.get(i));
+        if(style==3){
+            // Numbers, which the speech model often writes as digits: "the plan 1. We pack the
+            // car. 2 we drive home." A spoken number word needs a pause after it,
+            // so "One day we left. Two weeks later" stays as it is.
+            boolean digit=w.equals(String.valueOf(n+1));
+            boolean word=w.equals(NUMBERED[n]);
+            if(!digit&&!word)return 0;
+            boolean pause=i+1<tokens.size()&&(tokens.get(i+1).equals(".")||tokens.get(i+1).equals(",")||tokens.get(i+1).equals(":"));
+            if(word&&!pause)return 0;
+            if(n>0&&!clauseStart(tokens,i))return 0;
+            if(n==0&&!clauseStart(tokens,i)&&!pause)return 0;
+            return pause?2:1;
+        }
+        // "bullet" is rare enough in speech that it may start an item anywhere.
+        if(style<2&&!clauseStart(tokens,i))return 0;
+        if(style==0)return w.equals(ORDINALS[n])||w.equals(ORDINALS[n]+"ly")?1:0;
+        // "number one" or, as the speech model often writes it, "number 1".
+        if(style==1)return w.equals("number")&&(word(tokens,i+1,NUMBERED[n])||word(tokens,i+1,String.valueOf(n+1)))?2:0;
+        if(!w.equals("bullet")&&!((w.equals("next")||w.equals("new"))&&word(tokens,i+1,"bullet")))return 0;
+        int length=w.equals("bullet")?1:2;
+        return word(tokens,i+length,"point")?length+1:length;
+    }
+
+    /**
+     * Writes a spoken list with one item per line. "My list, first eggs, second milk, and third
+     * bread." becomes "My list:" and the lines "1. Eggs", "2. Milk", and "3. Bread". Saying
+     * "number one", "number two" works the same way, and "bullet" starts lines with "- ".
+     * Numbers work too, as digits or as words followed by a pause: "1. We pack the car. 2
+     * we drive home." A list needs at least two markers in order, each at the start of
+     * a clause, so "at first we waited a second" stays as it is. The list ends at the end of
+     * its last sentence, and items lose their final period.
+     */
+    private static void lists(List<String> tokens){
+        for(int style=0;style<4;style++){
+            List<int[]> found=new ArrayList<>();
+            for(int i=0;i<tokens.size()&&found.size()<ORDINALS.length;i++){
+                int n=style==2?0:found.size();
+                // A repeated first marker before the second one restarts the list, as in
+                // "First, some background. First, we pack. Second, we drive.".
+                if(style!=2&&found.size()==1){
+                    int again=marker(tokens,i,0,style);
+                    if(again>0&&i>found.get(0)[0]){found.set(0,new int[]{i,again});i+=again-1;continue;}
+                }
+                int length=marker(tokens,i,n,style);
+                // Every item needs words, so "one, two, three" counting is not a list.
+                if(length>0&&!found.isEmpty()&&found.get(found.size()-1)[0]+found.get(found.size()-1)[1]>=i)length=0;
+                if(length>0){found.add(new int[]{i,length});i+=length-1;}
+            }
+            if(found.size()<2)continue;
+            // A spoken "new line" or "new paragraph" between markers means the speaker chose the layout.
+            boolean chosen=false;
+            for(int i=found.get(0)[0];i<found.get(found.size()-1)[0];i++)chosen|=newline(tokens.get(i));
+            if(chosen)continue;
+            // The list ends at the first sentence end after the last marker.
+            int end=found.get(found.size()-1)[0];
+            while(end<tokens.size()&&!sentenceEnd(tokens,end))end++;
+            for(int k=found.size()-1;k>=0;k--){
+                int at=found.get(k)[0],length=found.get(k)[1];
+                int stop=k+1<found.size()?found.get(k+1)[0]:end;
+                // Drop "and"/"then" before the next marker and the commas and period around the item.
+                int last=stop-1;
+                while(last>at+length-1&&(tokens.get(last).equals(",")||tokens.get(last).equals(";")||tokens.get(last).equals(".")||lower(tokens.get(last)).equals("and")||lower(tokens.get(last)).equals("then")))last--;
+                for(int j=stop-1;j>last;j--)tokens.remove(j);
+                for(int j=0;j<length;j++)tokens.remove(at);
+                while(at<tokens.size()&&(tokens.get(at).equals(",")||tokens.get(at).equals(".")||tokens.get(at).equals(":")))tokens.remove(at);
+                if(k==found.size()-1){
+                    // Drop the final period of the last item; keep ? and !.
+                    int after=at;
+                    while(after<tokens.size()&&!sentenceEnd(tokens,after))after++;
+                    if(after<tokens.size()&&tokens.get(after).equals("."))tokens.remove(after);
+                    if(after<tokens.size()&&!newline(tokens.get(after)))tokens.add(after,NEWLINE);
+                }
+                tokens.add(at,style==2?"-":(k+1)+".");
+                tokens.add(at,NEWLINE);
+            }
+            // Introduce the list with a colon when the text before it has no closing mark.
+            int first=found.get(0)[0];
+            while(first>0&&(tokens.get(first-1).equals(",")))tokens.remove(--first);
+            if(first>0&&!punctuation(tokens.get(first-1)))tokens.add(first,":");
+            if(first==0)tokens.remove(0);
+            return;
+        }
+    }
+
+    private static final Set<String> DOMAINS=words("com org net io ai co edu gov dev app us uk ca me tv info biz xyz gg ly fm");
+    private static final Set<String> BEFORE_EMAIL=words("email emailed e-mail address is to at contact reach");
+    private static final Set<String> NOT_NAMES=words("a an the this that it it's its i me we us you he him she her they them");
+
+    /**
+     * Writes spoken web addresses as text: "google dot com" becomes "google.com" and
+     * "www dot example dot co dot uk" becomes "www.example.co.uk". After a word such as "email"
+     * or "is", "john at gmail dot com" becomes "john@gmail.com". "a dot com company" stays.
+     */
+    private static void webAddresses(List<String> tokens){
+        for(int i=0;i<tokens.size();i++)if(word(tokens,i,"dotcom")){tokens.set(i,"com");tokens.add(i,"dot");}
+        for(int i=0;i<tokens.size();i++){
+            if(punctuation(tokens.get(i))||NOT_NAMES.contains(lower(tokens.get(i)))||word(tokens,i,"dot"))continue;
+            int k=i+1;
+            while(word(tokens,k,"dot")&&k+1<tokens.size()&&!punctuation(tokens.get(k+1)))k+=2;
+            if(k==i+1||!DOMAINS.contains(lower(tokens.get(k-1))))continue;
+            StringBuilder domain=new StringBuilder(lower(tokens.get(i)));
+            for(int j=i+2;j<k;j+=2)domain.append('.').append(lower(tokens.get(j)));
+            int start=i;
+            if(i>=2&&word(tokens,i-1,"at")&&!punctuation(tokens.get(i-2))&&!NOT_NAMES.contains(lower(tokens.get(i-2)))
+                &&(i==2||BEFORE_EMAIL.contains(lower(tokens.get(i-3)))||punctuation(tokens.get(i-3)))){
+                start=i-2;domain.insert(0,lower(tokens.get(i-2))+"@");
+            }
+            for(int j=start;j<k;j++)tokens.remove(start);
+            tokens.add(start,domain.toString());
+            i=start;
+        }
     }
 
     static boolean punctuation(String token){
@@ -329,7 +711,7 @@ public final class DictationCleanup {
     }
 
     /** Joins the tokens with standard spacing and capitalizes the start of each sentence. */
-    private static String join(List<String> tokens,boolean startsSentence){
+    private static String join(List<String> tokens,boolean startsSentence,boolean capitalize,Predicate<String> lowercaseWord){
         StringBuilder out=new StringBuilder();
         String last=null;
         boolean capital=startsSentence;
@@ -338,7 +720,7 @@ public final class DictationCleanup {
                 if(last==null)continue;
                 if(newline(token)){
                     while(out.length()>0&&out.charAt(out.length()-1)==' ')out.setLength(out.length()-1);
-                    if(last.equals(",")||last.equals(";")||last.equals(":"))out.setLength(out.length()-1);
+                    if(last.equals(",")||last.equals(";"))out.setLength(out.length()-1);
                     if(newline(last)){
                         if(last.length()>=token.length())continue;
                         out.setLength(out.length()-last.length());
@@ -355,12 +737,26 @@ public final class DictationCleanup {
                 continue;
             }
             String word=pronounI(token);
-            if(capital){word=capitalize(word);capital=false;}
+            // A list marker such as "1." or "-" passes the capital on to the item's first word.
+            boolean listMarker=(last==null||newline(last))&&(word.equals("-")||word.matches("\\d+\\."));
+            if(capital&&!capitalize){
+                // The model's sentence capital, as in "The", becomes lowercase. Names stay.
+                if(last!=null||startsSentence){
+                    String lower=lower(word).replace('’','\'');
+                    boolean pronoun=lower.equals("i")||lower.startsWith("i'");
+                    if(!pronoun&&(lowercaseWord==null||lowercaseWord.test(lower)))word=decapitalize(word);
+                }
+                capital=false;
+                if(last==null&&!startsSentence)word=decapitalize(word);
+            }
+            // Web and email addresses keep their lowercase letters.
+            else if(capital){if(!word.contains(".")&&!word.contains("@"))word=capitalize(word);capital=false;}
             // Models that write capitals start every recording with one. In the middle of a
             // sentence, an ordinary capitalized first word goes back to lowercase.
             else if(last==null&&!startsSentence)word=decapitalize(word);
             if(last!=null&&!newline(last))out.append(' ');
             out.append(word);last=word;
+            if(listMarker)capital=true;
         }
         return out.toString();
     }

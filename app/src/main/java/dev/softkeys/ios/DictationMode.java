@@ -80,6 +80,28 @@ public final class DictationMode {
     private static float clamp(float value){return value<0?0:value>1?1:value;}
 
     /**
+     * Turns the microphone level into how strongly the recording waves move, from 0 for the
+     * room's background noise to 1 for normal speech. It follows the background level: down
+     * at once when the room gets quieter, and up over about 10 seconds, so steady noise such
+     * as a fan reads as silence while a long stretch of speech does not.
+     */
+    public static final class Voice {
+        private float floor=-1;
+
+        public void reset(){floor=-1;}
+
+        /** Call once per frame with the smoothed level. Returns the voice activity, from 0 to 1. */
+        public float update(float level){
+            // Start no higher than a quiet room, in case speech begins with the recording.
+            if(floor<0)floor=Math.min(level,.2f);
+            floor+=(level-floor)*(level<floor?.3f:.0015f);
+            floor=Math.min(floor,.45f);
+            float activity=clamp((level-floor-.04f)/.36f);
+            return (float)Math.pow(activity,.8);
+        }
+    }
+
+    /**
      * Smooths the microphone level and keeps a history of bars for the meter. A bar is
      * added every 50 ms of drawing time, so the meter scrolls at an even speed whether the
      * levels arrive from the on-device recorder or from the phone speech service.
@@ -120,5 +142,8 @@ public final class DictationMode {
         }
 
         public int size(){return history.length;}
+
+        /** The smoothed level, from 0 to 1. */
+        public float level(){return current;}
     }
 }

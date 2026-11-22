@@ -53,8 +53,14 @@ jobs:
       - name: Check dictation cleanup
         run: |
           mkdir -p build/cleanup-test
-          javac -d build/cleanup-test tests/DictationCleanupTest.java app/src/main/java/dev/softkeys/ios/DictationCleanup.java
+          javac -d build/cleanup-test tests/DictationCleanupTest.java app/src/main/java/dev/softkeys/ios/DictationCleanup.java app/src/main/java/dev/softkeys/ios/DictationNumbers.java app/src/main/java/dev/softkeys/ios/EnglishDictionary.java
           java -cp build/cleanup-test DictationCleanupTest
+
+      - name: Check smart cleanup edits
+        run: |
+          mkdir -p build/edit-check-test
+          javac -d build/edit-check-test tests/SmartEditCheckTest.java app/src/main/java/dev/softkeys/ios/SmartEditCheck.java
+          java -cp build/edit-check-test SmartEditCheckTest
 
       - name: Check dictation keyboard decisions
         run: |
