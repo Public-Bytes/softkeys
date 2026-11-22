@@ -12,13 +12,8 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import java.util.ArrayList;
 
-/** A user-controlled dictation session containing one or more provider requests. */
-final class DictationSession {
-    interface Listener {
-        void status(DictationSession session,String text,boolean finishing);
-        void result(DictationSession session,String text);
-        void error(DictationSession session,String message,String retainedText);
-    }
+/** Dictation through the phone's speech recognition service, with one or more provider requests. */
+final class DictationSession implements DictationEngine {
     private final Context context;
     private final Listener listener;
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -33,7 +28,7 @@ final class DictationSession {
     private final Runnable finishTimeout=()->{if(!closed&&stopping){keepPartial();finish();}};
 
     DictationSession(Context context,Listener listener){this.context=context;this.listener=listener;}
-    void start(){if(!closed)begin();}
+    @Override public void start(){if(!closed)begin();}
     private void begin(){
         if(closed||stopping)return;
         releaseAttempt();partial="";
@@ -63,7 +58,7 @@ final class DictationSession {
         }catch(SecurityException denied){fail("Allow microphone access in SoftKeys settings.");}
         catch(java.io.IOException|RuntimeException unavailable){fail("Speech recognition couldn't start. Check your phone's microphone and speech recognition service.");}
     }
-    void stop(){
+    @Override public void stop(){
         if(closed||stopping)return;
         stopping=true;handler.removeCallbacks(nextRequest);handler.removeCallbacks(endedRequest);
         listener.status(this,"Finishing dictation…",true);
@@ -103,7 +98,7 @@ final class DictationSession {
             if(previous.audio!=null)previous.audio.close();
         }
     }
-    void close(){if(closed)return;closed=true;handler.removeCallbacksAndMessages(null);releaseAttempt();complete.setLength(0);partial="";}
+    @Override public void close(){if(closed)return;closed=true;handler.removeCallbacksAndMessages(null);releaseAttempt();complete.setLength(0);partial="";}
     private void finish(){if(closed)return;String text=complete.toString();close();listener.result(this,text);}
     private void fail(String message){if(closed)return;String retained=complete.toString();close();listener.error(this,message,retained);}
     private String transcript(Bundle bundle){
