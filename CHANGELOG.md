@@ -2,7 +2,7 @@
 
 ## 1.14
 
-Word replacements now fix words that sound like a rule's written word, as well as the exact spoken words. Before, a rule such as `joksich => Yaksich` fixed only "Joksich", and the model kept writing new spellings such as "Yoxich" and "Jarkswich". Now one rule, or a line with just `Yaksich`, fixes those spellings too. Known English words are never changed this way, so a rule for "Lilly" leaves "lily" alone. A lowercase replacement also takes a capital letter when the word it replaces had one, so `joksich => yaksich` writes "Yaksich" after "Joseph".
+Word replacements now fix words that sound like a rule's written word, as well as the exact spoken words. Before, a rule such as `kachmarek => Kaczmarek` fixed only "Kachmarek", and the model could still write a new spelling such as "Kazmarek". Now one rule, or a line with just `Kaczmarek`, fixes those spellings too. Known English words are never changed this way. A lowercase replacement also takes a capital letter when the word it replaces had one.
 
 ## 1.13
 

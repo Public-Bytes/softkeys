@@ -94,16 +94,13 @@ public final class DictationCleanupTest {
 
         // Sound matching. One rule teaches the spelling, and other spellings that sound
         // the same are fixed. Known English words are never changed.
-        String name="joksich => yaksich\nLilly\n";
-        expect("vocabulary",String.join(",",DictationCleanup.parseVocabulary(name)),"yaksich,Lilly");
-        sounds("Yoxich. Joseph Yarsich. Joseph Allen Yocksage. Joseph Alan Joksich the First.",name,
-            "Yaksich. Joseph Yaksich. Joseph Allen Yaksich. Joseph Alan Yaksich the First.");
-        sounds("Nicholas Yaksich. Joseph Jarkswich. Jakzich, Jahzich, Yaksitch.",name,
-            "Nicholas Yaksich. Joseph Yaksich. Yaksich, Yaksich, Yaksich.");
-        sounds("i saw a lily and a jack and the yacht sank",name,"I saw a lily and a jack and the yacht sank");
-        sounds("tell lilleigh hi",name,"Tell Lilly hi");
-        sounds("my friend jax said yes",name,"My friend jax said yes");
-        checkWith("Joseph Joksich",true,true,name,"Joseph Yaksich");
+        String name="kachmarek => kaczmarek\nMcAllister\n";
+        expect("vocabulary",String.join(",",DictationCleanup.parseVocabulary(name)),"kaczmarek,McAllister");
+        sounds("Anna Kachmarek. Anna Katchmarek. Anna Kazmarek. Anna Kosmarek.",name,
+            "Anna Kaczmarek. Anna Kaczmarek. Anna Kaczmarek. Anna Kaczmarek.");
+        sounds("i met mack alister and mcalister",name,"I met mack alister and McAllister");
+        sounds("i saw a camera and a market and the yacht sank",name,"I saw a camera and a market and the yacht sank");
+        checkWith("Anna Kachmarek",true,true,name,"Anna Kaczmarek");
 
         // Preview is lighter: no phrase fillers, single-line.
         DictationCleanup.Options options=new DictationCleanup.Options();

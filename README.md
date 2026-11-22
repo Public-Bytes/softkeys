@@ -140,7 +140,7 @@ The Clean style applies these rules before the text is inserted:
 
 - It removes "um", "uh", "er", and similar sounds, and it removes "you know" and "like" when commas set them apart. It also removes stutters and repeated words, such as "I I think" or "the the". Repeats that are often deliberate, such as "very very" and number sequences, are kept.
 - It turns spoken "comma", "period", "question mark", "exclamation point", "colon", "new line", and "new paragraph" into punctuation. Turn off **Spoken punctuation** to keep these words. "Period" stays a word in phrases such as "a period of time".
-- It applies your **Word replacements**, one rule per line, such as `soft keys => SoftKeys`. A rule with nothing after the arrow removes the words. A rule's written word, or a line with only one word such as `Yaksich`, also fixes other words that sound like it, so one rule covers the different ways the model misspells a name. Known English words are never changed this way.
+- It applies your **Word replacements**, one rule per line, such as `soft keys => SoftKeys`. A rule with nothing after the arrow removes the words. A rule's written word, or a line with only one word such as `Kaczmarek`, also fixes other words that sound like it, so one rule covers the different ways the model misspells a name. Known English words are never changed this way.
 - It fixes spacing around punctuation and capitalizes sentences and the word "I".
 
 Both styles start the text with a lowercase letter when the cursor is in the middle of a sentence, unless the first word is "I" or has other capitals. A name at that position also loses its capital.
