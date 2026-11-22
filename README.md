@@ -6,7 +6,7 @@ An iOS-inspired English keyboard for Android, with local autocorrect, glide typi
 
 [Download the latest APK](https://github.com/gitcommit90/softkeys/releases/latest) | [Release notes](CHANGELOG.md) | [Development](docs/development.md)
 
-SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. Dictation can run on the phone with a speech model that you download once, or it can use your phone's speech recognition service. The current release is **1.11**.
+SoftKeys runs on Android 8.0 and later. Text predictions stay on the device. The microphone key switches to a dictation keyboard with no letter keys, and the keyboard button switches back. Dictation can run on the phone with a speech model that you download once, or it can use your phone's speech recognition service. The current release is **1.12**.
 
 ## Appearance
 
@@ -27,7 +27,7 @@ The captures show the 1.5 Reference layout on narrow and wide displays. They use
 
 ## Install
 
-1. Download `SoftKeys-1.11.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
+1. Download `SoftKeys-1.12.apk` from [Releases](https://github.com/gitcommit90/softkeys/releases/latest). GitHub sign-in and access to this private repository are required.
 2. Open the APK on your Android device and allow installation from your browser or file manager if Android asks.
 3. Open SoftKeys, choose **Enable SoftKeys**, then choose **Choose SoftKeys**.
 4. Open a text field to start typing, or use the sample field in the SoftKeys app.
@@ -47,7 +47,7 @@ The release uses the same signing certificate as the previous signed SoftKeys do
 | Repeated deletion | Hold Backspace. It removes characters first and then whole words. |
 | Clipboard suggestion | Tap the Paste chip above the keys to insert recently copied text. Tap its close button to dismiss it. |
 | Emoji | Open the emoji picker for categories, search, and recent selections. Drag sideways to slide between pages. Hold an emoji with a dot below it for variants. |
-| Dictation | Tap the microphone to speak while SoftKeys stays visible. Tap Stop or the microphone again to finish, or Cancel to discard the request. On-device dictation cleans up the text before it is inserted. |
+| Dictation | Tap the microphone to switch to the dictation keyboard and start recording. Tap Done to insert the text, or × to discard it. Tap the keyboard button to bring the keys back. |
 
 Autocorrect, suggestions, and glide decoding use a bundled English dictionary with contractions, common names, and common texting and technology words. Autocorrect uses where each tap landed, so a tap near the edge of a key can be read as the neighboring letter. Recognized words, acronyms, and mixed case text are preserved. Short words that the dictionary does not hold are changed only when the evidence is strong. URL and path syntax stays literal, while ordinary search words can be corrected.
 
@@ -59,30 +59,41 @@ Glide entry and suggestions remain available in email fields and recognized term
 
 ## Dictation
 
-The first microphone tap asks for audio permission. After granting access, return to your text field and tap the microphone again to start. You can also grant permission through Microphone access in SoftKeys settings.
+Tap the microphone on the keys to switch to the dictation keyboard. The letter keys, numbers, and suggestions are replaced by a shorter panel, and recording starts at once. The panel shows a red dot with a timer, a level meter that moves with your voice, × to discard the recording, and Done. Tap Done, and the text is inserted and the panel returns to its idle state. Tap **Dictate** to record again. Space, Delete, and Return stay at the bottom of the panel. Return runs the field's action, such as Send or Search, when it has one.
 
-Dictation stays active through pauses until you tap Stop or the microphone again. There is no session timer. Listening status and partial text appear above the keys, and Stop inserts the accumulated transcript into the original field. Cancel discards the session. Typing, moving the cursor, hiding the keyboard, or changing fields cancels dictation. Password and numeric fields do not support dictation.
+Tap the keyboard button at the bottom left to bring the keys back. If you were recording, SoftKeys finishes the recording and inserts the text, and anything you type meanwhile follows it. SoftKeys remembers which keyboard you used last, so other text fields and the next time the keyboard opens show the dictation keyboard until you tap the keyboard button. Password, PIN, number, phone, date, and private browsing fields always show the keys and never record, and they do not change that choice.
 
-Choose the dictation engine in SoftKeys settings. **Phone speech service** is the default and works as in earlier releases. **On-device (Hex-style)** recognizes speech on the phone with the NVIDIA FastConformer streaming English model, which SoftKeys runs with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The model is about 137 MB and is not part of the APK. Choose **Download speech model** in settings to fetch it from Hugging Face. Settings shows the progress, and SoftKeys checks the size and SHA-256 of each file before using it. **Delete speech model** removes it. If On-device is selected and the model is not downloaded, SoftKeys shows a short notice and uses the phone speech service.
+The first recording asks for microphone permission. After granting access, return to your text field and tap Dictate. You can also grant permission through Microphone access in SoftKeys settings. Dictation stays active through pauses until you tap Done. There is no time limit. Moving the cursor from the app, hiding the keyboard, or changing fields discards an open recording.
 
-The first on-device session after a while loads the model, and the strip shows "Loading speech model…". Speech during loading is kept and recognized when the model is ready. Partial text appears while you speak. The model writes lowercase text without punctuation, so the cleanup step adds capitals and spacing. On-device dictation needs a 64-bit ARM phone. Other phones use the phone speech service.
+The style button at the top right switches between **Clean** and **Verbatim**. Clean removes fillers and repeated words and applies spoken punctuation and your word replacements. Verbatim keeps every word that the model heard and fixes only spacing and capitals. Styles apply to on-device dictation.
 
-The cleanup step for on-device dictation applies these rules before the text is inserted:
+### Engines and models
+
+Choose the engine in SoftKeys settings. **Phone speech service** is the default and needs no download. **On-device (Hex-style)** recognizes speech on the phone with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), and the audio never leaves the phone. It offers two models, which you download once from Hugging Face in settings. SoftKeys checks the size and SHA-256 of each file before using it.
+
+| Model | Download | How it works |
+| --- | --- | --- |
+| **High accuracy** (recommended), NVIDIA Parakeet TDT 0.6B v2 | 661 MB | Transcribes the whole recording after Done, as Hex does. It makes the fewest mistakes and writes punctuation and capitals. |
+| **Fast**, NVIDIA FastConformer streaming | 137 MB | Transcribes while you speak, so Done is almost instant. It makes more mistakes and writes no punctuation. |
+
+[docs/dictation-benchmark.md](docs/dictation-benchmark.md) lists the measured accuracy and speed. The measurements were made on a Linux desktop, not on a phone. SoftKeys starts loading the model when the dictation keyboard appears and keeps it loaded while that keyboard stays open, and the microphone starts before loading finishes. High accuracy used about 0.9 GB of memory after loading and up to about 1.4 GB while transcribing in the desktop measurements, so Android may close SoftKeys to free memory on phones with little memory. If the chosen model is not downloaded, SoftKeys uses the other downloaded model or the phone speech service. On-device dictation needs a 64-bit ARM phone.
+
+The Clean style applies these rules before the text is inserted:
 
 - It removes "um", "uh", "er", and similar sounds, and it removes "you know" and "like" when commas set them apart. It also removes stutters and repeated words, such as "I I think" or "the the". Repeats that are often deliberate, such as "very very" and number sequences, are kept.
 - It turns spoken "comma", "period", "question mark", "exclamation point", "colon", "new line", and "new paragraph" into punctuation. Turn off **Spoken punctuation** to keep these words. "Period" stays a word in phrases such as "a period of time".
 - It applies your **Word replacements**, one rule per line, such as `soft keys => SoftKeys`. A rule with nothing after the arrow removes the words.
 - It fixes spacing around punctuation and capitalizes sentences and the word "I".
 
-The live preview uses a lighter version of the same rules. Turn off **Clean up dictated text** to insert the model's text unchanged. Cleanup does not apply to the phone speech service.
+Both styles start the text with a lowercase letter when the cursor is in the middle of a sentence, unless the first word is "I" or has other capitals. A name at that position also loses its capital.
 
 When the phone speech service is used on Android 13 and later, SoftKeys supplies a continuous audio stream to providers that support segmented recognition. Older Android versions and providers that end each request use automatically repeated recognition requests, which can have brief gaps between requests. Speech recognition depends on the service installed on your phone and its available English (US) language support. The service may use the network or process audio locally. SoftKeys keeps its own keyboard visible and does not open the provider's voice keyboard.
 
-<img src="docs/images/dictation.png" alt="SoftKeys stays visible during dictation, with Listening, Stop, and Cancel above the keys" width="300">
+If no engine can run, the panel says so and offers a button that opens SoftKeys settings. The keyboard button still brings the keys back.
 
 ## Settings
 
-Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. The Dictation section holds the engine choice, the speech model download, cleanup switches, and word replacements. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
+Open SoftKeys to change appearance and typing preferences. The app has separate switches for autocorrect, glide typing, clipboard suggestions, automatic capitalization, double-space periods, haptic feedback, and key popups. The Dictation section holds the engine choice, the two speech model downloads, the style, and word replacements. **Reset learned words** removes the words that SoftKeys saved after you kept your own spelling.
 
 Open **Keypress vibration** to choose a duration from 1 to 100 ms using a slider or an exact number, including 2 ms. Moving the slider previews the vibration when Haptic feedback is on. Save keeps the value, Cancel preserves the previous value, and Default selects the existing 12 ms default. Hold feedback adjusts with the chosen duration.
 
@@ -106,7 +117,7 @@ Touch and hold duration defaults to **300 ms**. Set it from 150 to 1000 ms in 25
 
 SoftKeys does not send typed text over the network, and it does not save what you type. The exception is the list of learned words, which holds single words that you chose to keep after a correction. The list is saved on the phone, never includes text from password fields, and can be cleared with Reset learned words. Keyboard settings and recent emoji selections are also saved locally. The keyboard reads nearby editor text to provide suggestions and corrections. When Clipboard suggestions is enabled, it also reads recent copied text for the Paste chip and keeps the eligible item only in memory until it is dismissed or expires. This feature does not save a clipboard history.
 
-The app requests Android's normal `VIBRATE` permission for haptic feedback, optional `RECORD_AUDIO` permission for dictation, and `INTERNET` permission. SoftKeys uses the network only when you choose Download speech model. The download fetches fixed public model files from Hugging Face over HTTPS and sends no audio, text, or device details. The model is saved in app storage that is excluded from backups. SoftKeys has no contacts or storage permissions.
+The app requests Android's normal `VIBRATE` permission for haptic feedback, optional `RECORD_AUDIO` permission for dictation, and `INTERNET` permission. SoftKeys uses the network only when you choose to download a speech model. The download fetches fixed public model files from Hugging Face over HTTPS and sends no audio, text, or device details. The models are saved in app storage that is excluded from backups. SoftKeys has no contacts or storage permissions.
 
 On-device dictation keeps microphone audio in memory on the phone and never sends it anywhere. The phone speech service receives microphone audio and may send it to its provider. SoftKeys does not save microphone audio or transcripts to files. Word replacement rules are saved in SoftKeys settings on the phone.
 
