@@ -37,27 +37,27 @@ SoftKeys is free and open source under the [MIT License](LICENSE). It is an inde
 
 ## Gallery
 
-Real screenshots from an Android phone, light and dark, upright and sideways.
+Real screenshots from an Android phone, in light and dark, upright and sideways.
 
 <table>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/images/phone-light.jpg" alt="SoftKeys light keyboard on an Android phone" height="380"><br>
-      <sub><b>Light</b> · white keys on soft gray</sub>
+      <img src="docs/images/dictation-recording-light.jpg" alt="The SoftKeys dictation keyboard recording, with crossing dotted waves, a timer, the Clean style label, cancel, and Done" height="380"><br>
+      <sub><b>Dictation keyboard</b><br>The waves rise and move faster while you speak</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/images/phone-dark.jpg" alt="SoftKeys dark keyboard on an Android phone" height="380"><br>
-      <sub><b>Dark</b> · easy on the eyes at night</sub>
+      <img src="docs/images/dictation-keys-light.jpg" alt="The light SoftKeys keyboard with a number row, recording from the suggestion bar while the keys stay usable" height="380"><br>
+      <sub><b>Dictate with the keys showing</b><br>Tap the microphone in the suggestion bar</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/images/phone-dark-number-row.jpg" alt="SoftKeys dark keyboard with a number row above the letters" height="380"><br>
-      <sub><b>Number row</b> · digits above the letters on wide screens</sub>
+      <img src="docs/images/dictation-keys-dark.jpg" alt="The dark SoftKeys keyboard recording from the suggestion bar, with white waves, cancel, and done" height="380"><br>
+      <sub><b>Dark</b><br>The same recording bar in the dark theme</sub>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="3">
       <img src="docs/images/landscape-dark.jpg" alt="SoftKeys dark keyboard in landscape on an Android phone" width="760"><br>
-      <sub><b>Landscape</b> · the full layout stretches across the wider screen</sub>
+      <sub><b>Landscape</b><br>The full layout stretches across the wider screen</sub>
     </td>
   </tr>
 </table>
