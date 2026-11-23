@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/dictation-demo.gif" alt="SoftKeys dictation demo: tapping the microphone, speaking, and the transcribed text appearing in the text field" width="360">
+  <img src="docs/images/dictation-demo.gif" alt="SoftKeys dictation demo in dark mode: the dotted waves rise while speaking, SoftKeys transcribes after Done, and the sentence appears in the note" width="360">
 </p>
 
 ---
